@@ -3648,7 +3648,6 @@ class VibeApp(App):  # noqa: PLR0904
             BottomApp.Config: ConfigApp,
             BottomApp.ModelPicker: ModelPickerApp,
             BottomApp.LocalProviderPicker: LocalProviderPickerApp,
-            BottomApp.LocalProviderPicker: LocalProviderPickerApp,
             BottomApp.ThemePicker: ThemePickerApp,
             BottomApp.ThinkingPicker: ThinkingPickerApp,
             BottomApp.ProxySetup: ProxySetupApp,
