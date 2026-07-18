@@ -99,6 +99,7 @@ from vibe.cli.textual_ui.widgets.loading import (
     LoadingWidget,
     paused_timer,
 )
+from vibe.cli.textual_ui.widgets.local_provider_picker import LocalProviderPickerApp
 from vibe.cli.textual_ui.widgets.messages import (
     VSCODE_EXTENSION_PROMO_WHATS_NEW_SUFFIX,
     AssistantMessage,
@@ -183,6 +184,7 @@ from vibe.core.config import DEFAULT_THEME, AnyVibeConfig, ModelConfig
 from vibe.core.config.patch import escape_json_pointer_token
 from vibe.core.data_retention import DATA_RETENTION_MESSAGE
 from vibe.core.hooks.models import HookStartEvent
+from vibe.core.local_providers import LocalModel, discover_local_providers
 from vibe.core.log_reader import LogReader
 from vibe.core.logger import logger
 from vibe.core.paths import HISTORY_FILE
@@ -326,6 +328,7 @@ class BottomApp(StrEnum):
     MCP = auto()
     MCPOAuth = auto()
     ModelPicker = auto()
+    LocalProviderPicker = auto()
     ProxySetup = auto()
     Question = auto()
     ThemePicker = auto()
@@ -1374,6 +1377,45 @@ class VibeApp(App):  # noqa: PLR0904
         self, _event: ModelPickerApp.Cancelled
     ) -> None:
         await self._switch_to_input_app()
+
+    async def on_local_provider_picker_app_model_selected(
+        self, message: LocalProviderPickerApp.ModelSelected
+    ) -> None:
+        await self._select_local_model(message.model)
+        await self._close_local_provider_picker()
+
+    async def on_local_provider_picker_app_cancelled(
+        self, _event: LocalProviderPickerApp.Cancelled
+    ) -> None:
+        await self._close_local_provider_picker()
+
+    async def _close_local_provider_picker(self) -> None:
+        await self._switch_to_input_app()
+        try:
+            await self.query_one(LocalProviderPickerApp).remove()
+        except Exception:
+            pass
+
+    async def _select_local_model(self, local_model: LocalModel) -> None:
+        provider_name = f"local-{local_model.provider.port}"
+        provider = {
+            "name": provider_name,
+            "api_base": local_model.provider.api_base,
+            "api_key_env_var": local_model.provider.api_key_env_var,
+            "api_style": "openai",
+            "backend": "generic",
+        }
+        providers = [item.model_dump() for item in self.config.providers]
+        providers = [item for item in providers if item["name"] != provider_name]
+        providers.append(provider)
+        alias = f"local-{local_model.provider.port}-{local_model.name}"
+        await self.agent_loop.config_orchestrator.set_field("/providers", providers)
+        await self.agent_loop.config_orchestrator.set_field(
+            f"/models/{escape_json_pointer_token(alias)}",
+            {"name": local_model.name, "provider": provider_name, "alias": alias},
+        )
+        await self.agent_loop.config_orchestrator.set_field("/active_model", alias)
+        await self._reload_config()
 
     async def on_vibe_code_project_picker_app_project_selected(
         self, message: VibeCodeProjectPickerApp.ProjectSelected
@@ -2980,6 +3022,21 @@ class VibeApp(App):  # noqa: PLR0904
             return
         await self._switch_to_model_picker_app()
 
+    async def _show_local(self, **kwargs: Any) -> None:
+        if self._current_bottom_app == BottomApp.LocalProviderPicker:
+            return
+        await self._ensure_loading_widget("Discovering local models", show_hint=False)
+        discoveries = await discover_local_providers()
+        await self._remove_loading_widget()
+        if not any(discovery.models for discovery in discoveries):
+            await self._mount_and_scroll(
+                UserCommandMessage("No local OpenAI-compatible models found.")
+            )
+            return
+        await self._switch_from_input(
+            LocalProviderPickerApp(discoveries, current_model=self.config.active_model)
+        )
+
     async def _show_thinking(self, **kwargs: Any) -> None:
         """Switch to the thinking level picker in the bottom panel."""
         if self._current_bottom_app == BottomApp.ThinkingPicker:
@@ -3599,6 +3656,7 @@ class VibeApp(App):  # noqa: PLR0904
         focus_widget_by_app: dict[BottomApp, type[Widget]] = {
             BottomApp.Config: ConfigApp,
             BottomApp.ModelPicker: ModelPickerApp,
+            BottomApp.LocalProviderPicker: LocalProviderPickerApp,
             BottomApp.ThemePicker: ThemePickerApp,
             BottomApp.ThinkingPicker: ThinkingPickerApp,
             BottomApp.ProxySetup: ProxySetupApp,
@@ -3633,6 +3691,13 @@ class VibeApp(App):  # noqa: PLR0904
         try:
             voice_app = self.query_one(VoiceApp)
             voice_app.action_close()
+        except Exception:
+            pass
+        self._last_escape_time = None
+
+    def _handle_local_provider_picker_app_escape(self) -> None:
+        try:
+            self.query_one(LocalProviderPickerApp).action_cancel()
         except Exception:
             pass
         self._last_escape_time = None
@@ -3963,6 +4028,7 @@ class VibeApp(App):  # noqa: PLR0904
             BottomApp.Approval: self._handle_approval_app_escape,
             BottomApp.Question: self._handle_question_app_escape,
             BottomApp.ModelPicker: self._handle_model_picker_app_escape,
+            BottomApp.LocalProviderPicker: self._handle_local_provider_picker_app_escape,
             BottomApp.ThemePicker: self._handle_theme_picker_app_escape,
             BottomApp.ThinkingPicker: self._handle_thinking_picker_app_escape,
             BottomApp.VibeCodeProjectCreate: self._handle_vibe_code_project_create_app_escape,
