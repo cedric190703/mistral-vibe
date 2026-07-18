@@ -78,13 +78,12 @@ class RoutingPickerApp(Container):
         option_list.focus()
 
     def _option(self, enabled: bool) -> Text:
-        marker = (
-            "[✓]"
-            if self._selected_enabled == enabled
-            else "[•]"
-            if self._enabled == enabled
-            else "[ ]"
+        is_checked = (
+            self._selected_enabled == enabled
+            if self._selected_enabled is not None
+            else self._enabled == enabled
         )
+        marker = "[✓]" if is_checked else "[ ]"
         title = "Automatic routing" if enabled else "Selected model only"
         detail = (
             f"Simple → {self._fast_model}  ·  Complex → {self._capable_model}"
@@ -92,10 +91,7 @@ class RoutingPickerApp(Container):
             else f"Every task → {self._current_model}"
         )
         text = Text(no_wrap=True)
-        text.append(
-            f"{marker} ",
-            style="bold #FF8205" if self._selected_enabled == enabled else "bold",
-        )
+        text.append(f"{marker} ", style="bold #FF8205" if is_checked else "bold")
         text.append(title, style="bold")
         text.append(f"  {detail}", style="dim")
         return text

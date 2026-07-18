@@ -73,9 +73,10 @@ class LocalProviderPickerApp(Container):
         text = Text(no_wrap=True)
         is_selected = self._selected_index == index
         is_current = self._current_model == f"local-{model.provider.port}-{model.name}"
-        marker = "[✓]" if is_selected else "[•]" if is_current else "[ ]"
-        text.append(f"{marker} ", style="bold #FF8205" if is_selected else "bold")
-        text.append(model.name, style="bold" if is_selected or is_current else "")
+        is_checked = is_selected if self._selected_index is not None else is_current
+        marker = "[✓]" if is_checked else "[ ]"
+        text.append(f"{marker} ", style="bold #FF8205" if is_checked else "bold")
+        text.append(model.name, style="bold" if is_checked or is_current else "")
         text.append(
             f"  {model.provider.name.upper()} :{model.provider.port}", style="dim"
         )

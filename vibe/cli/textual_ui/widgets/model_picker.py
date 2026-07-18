@@ -16,12 +16,12 @@ from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 
 
 def _build_option_text(
-    alias: str, provider: str, *, is_current: bool, is_selected: bool
+    alias: str, provider: str, *, is_current: bool, is_checked: bool
 ) -> Text:
     text = Text(no_wrap=True)
-    marker = "[✓]" if is_selected else "[•]" if is_current else "[ ]"
-    text.append(f"{marker} ", style="bold #FF8205" if is_selected else "bold")
-    text.append(alias, style="bold" if is_current or is_selected else "")
+    marker = "[✓]" if is_checked else "[ ]"
+    text.append(f"{marker} ", style="bold #FF8205" if is_checked else "bold")
+    text.append(alias, style="bold" if is_current or is_checked else "")
     text.append(f"  {provider.upper()}", style="dim")
     if is_current:
         text.append("  CURRENT", style="bold #FF8205")
@@ -66,7 +66,11 @@ class ModelPickerApp(Container):
                     alias,
                     self._model_providers.get(alias, "model"),
                     is_current=alias == self._current_model,
-                    is_selected=alias == self._selected_alias,
+                    is_checked=(
+                        alias == self._selected_alias
+                        if self._selected_alias is not None
+                        else alias == self._current_model
+                    ),
                 ),
                 id=alias,
             )

@@ -3,6 +3,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from rich.text import Text
+from textual.widgets import OptionList
 
 from tests.conftest import build_test_vibe_app, build_test_vibe_config
 from vibe.cli.textual_ui.app import BottomApp
@@ -11,6 +13,13 @@ from vibe.cli.textual_ui.widgets.model_picker import ModelPickerApp
 from vibe.cli.textual_ui.widgets.routing_picker import RoutingPickerApp
 from vibe.cli.textual_ui.widgets.thinking_picker import ThinkingPickerApp
 from vibe.core.config import THINKING_LEVELS, ModelConfig, RoutingConfig
+
+
+def _checked_options(option_list: OptionList) -> list[bool]:
+    return [
+        isinstance(option.prompt, Text) and option.prompt.plain.startswith("[✓]")
+        for option in option_list.options
+    ]
 
 
 def _make_config_with_models():
@@ -157,6 +166,24 @@ async def test_routing_picker_requires_space_before_applying() -> None:
 
 
 @pytest.mark.asyncio
+async def test_routing_picker_moves_the_only_check_to_the_marked_mode() -> None:
+    app = build_test_vibe_app(config=_make_config_with_routing())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        option_list = app.query_one("#routingpicker-options", OptionList)
+        assert _checked_options(option_list) == [True, False]
+
+        await pilot.press("down", "space")
+        await pilot.pause(0.2)
+
+        option_list = app.query_one("#routingpicker-options", OptionList)
+        assert _checked_options(option_list) == [False, True]
+
+
+@pytest.mark.asyncio
 async def test_routing_picker_escape_keeps_the_current_session_choice() -> None:
     app = build_test_vibe_app(config=_make_config_with_routing())
     async with app.run_test() as pilot:
@@ -260,6 +287,24 @@ async def test_model_picker_requires_space_before_applying() -> None:
             mock_set_field.assert_not_awaited()
 
         assert app._current_bottom_app == BottomApp.ModelPicker
+
+
+@pytest.mark.asyncio
+async def test_model_picker_moves_the_only_check_to_the_marked_choice() -> None:
+    app = build_test_vibe_app(config=_make_config_with_models())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_model()
+        await pilot.pause(0.2)
+
+        option_list = app.query_one("#modelpicker-options", OptionList)
+        assert _checked_options(option_list) == [True, False, False]
+
+        await pilot.press("down", "space")
+        await pilot.pause(0.2)
+
+        option_list = app.query_one("#modelpicker-options", OptionList)
+        assert _checked_options(option_list) == [False, True, False]
 
 
 @pytest.mark.asyncio
