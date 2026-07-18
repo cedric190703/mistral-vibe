@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d0e11" />
+    <title>Vibe — Une boucle de développement observable</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="deck" aria-label="Présentation Vibe">
+      <section class="slide slide--pitch is-active" data-title="Le pitch prend vie">
+        <div class="slide__index">01 / 05</div>
+        <header class="slide__header">
+          <p class="eyebrow">VIBE · DU « ONE SHOT » À UNE BOUCLE OBSERVABLE</p>
+          <h2>Un pitch que le client peut <em>vivre.</em></h2>
+        </header>
+        <div class="duel" aria-label="Une conversation transformée en duel ludique">
+          <article class="creature creature--left">
+            <div class="creature__avatar" aria-hidden="true">A</div>
+            <p class="creature__name">Arthuro</p>
+            <div class="energy"><span></span></div>
+            <p class="speech">« Rendons la conversation concrète. »</p>
+          </article>
+          <div class="duel__center" aria-hidden="true">
+            <span>VS</span>
+            <i></i>
+          </div>
+          <article class="creature creature--right">
+            <div class="creature__avatar" aria-hidden="true">V</div>
+            <p class="creature__name">Vibe</p>
+            <div class="energy"><span></span></div>
+            <p class="speech">« Construisons une démo mémorable. »</p>
+          </article>
+        </div>
+        <p class="statement">
+          En un prompt, une idée abstraite devient une expérience gamifiée,
+          partageable et compréhensible par tous.
+        </p>
+      </section>
+
+      <section class="slide slide--limits" data-title="Les limites du one shot">
+        <div class="slide__index">02 / 05</div>
+        <div class="limit-copy">
+          <p class="eyebrow">LE « ONE SHOT » IMPRESSIONNE</p>
+          <h2>Le code dit<br /><em>« terminé ».</em></h2>
+          <p class="lead">Le navigateur, lui, voit encore les problèmes.</p>
+        </div>
+        <div class="broken-ui" aria-label="Exemples de défauts visibles dans le navigateur">
+          <div class="browser-bar"><i></i><i></i><i></i><span>localhost:3000</span></div>
+          <div class="broken-ui__body">
+            <div class="ghost-panel ghost-panel--one">Conversation</div>
+            <div class="ghost-panel ghost-panel--two">Action</div>
+            <button type="button" tabindex="-1">Continuer</button>
+            <span class="bug bug--one">CHEVAUCHEMENT</span>
+            <span class="bug bug--two">ORDRE CONFUS</span>
+            <span class="bug bug--three">BOUTON PERDU</span>
+          </div>
+        </div>
+        <p class="bottom-claim">Générer n’est pas encore valider.</p>
+      </section>
+
+      <section class="slide slide--loop" data-title="Vibe entre dans Chrome">
+        <div class="slide__index">03 / 05</div>
+        <header class="slide__header">
+          <p class="eyebrow">LE TWIST · VIBE-IN-CHROME · CONTRIBUTION OSS</p>
+          <h2>La boucle se ferme dans le <em>vrai navigateur.</em></h2>
+        </header>
+        <div class="orbit" aria-label="Boucle Vibe, Chrome, diagnostic, correction et vérification">
+          <div class="orbit__line" aria-hidden="true"></div>
+          <div class="orbit__node orbit__node--vibe"><b>01</b><span>Vibe</span><small>construit</small></div>
+          <div class="orbit__node orbit__node--chrome"><b>02</b><span>Chrome</span><small>exécute</small></div>
+          <div class="orbit__node orbit__node--diagnose"><b>03</b><span>Observe</span><small>diagnostique</small></div>
+          <div class="orbit__node orbit__node--fix"><b>04</b><span>Corrige</span><small>puis vérifie</small></div>
+          <div class="orbit__core"><span>↻</span><strong>TESTER<br />POUR DE VRAI</strong></div>
+        </div>
+        <p class="statement statement--compact">
+          Ouvrir. Essayer. Constater. Corriger. Vérifier à nouveau.
+        </p>
+      </section>
+
+      <section class="slide slide--contributions" data-title="Trois contributions">
+        <div class="slide__index">04 / 05</div>
+        <header class="slide__header">
+          <p class="eyebrow">UN WORKFLOW, TROIS CONTRIBUTIONS</p>
+          <h2>Plus testable. Plus ouvert. Plus <em>lisible.</em></h2>
+        </header>
+        <div class="contribution-list">
+          <article>
+            <span class="contribution-list__number">01</span>
+            <div><h3>vibe-in-chrome</h3><p>Teste et débogue l’interface dans Chrome.</p></div>
+            <span class="contribution-list__verb">OBSERVER</span>
+          </article>
+          <article>
+            <span class="contribution-list__number">02</span>
+            <div><h3>local-ai-discovery</h3><p>Détecte et sélectionne les modèles locaux.</p></div>
+            <span class="contribution-list__verb">OUVRIR</span>
+          </article>
+          <article>
+            <span class="contribution-list__number">03</span>
+            <div><h3>/skills · /context</h3><p>Expose les capacités et le contexte actifs.</p></div>
+            <span class="contribution-list__verb">COMPRENDRE</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="slide slide--result" data-title="Le résultat et la suite">
+        <div class="slide__index">05 / 05</div>
+        <p class="eyebrow">LE RÉSULTAT · UNE ÉVOLUTION DU VIBE CODING</p>
+        <h2>Du « ça a l’air bon »<br />au <em>« on l’a vérifié ».</em></h2>
+        <div class="comparison">
+          <div class="comparison__side comparison__side--before">
+            <span>AVANT</span>
+            <strong>Généré</strong>
+            <p>Impressionnant, mais opaque et fragile en démonstration.</p>
+          </div>
+          <div class="comparison__arrow" aria-hidden="true">→</div>
+          <div class="comparison__side comparison__side--after">
+            <span>APRÈS</span>
+            <strong>Éprouvé</strong>
+            <p>Fluide, observable et crédible devant le client.</p>
+          </div>
+        </div>
+        <div class="proof-line">
+          <span>✓ tester</span><span>✓ comprendre</span
+          ><span>✓ ajuster</span><span>✓ davantage de modèles</span>
+        </div>
+        <footer class="result-footer">
+          <div>
+            <span>PROCHAINE ÉTAPE</span>
+            <strong>Finaliser la contribution OSS et ouvrir la pull request.</strong>
+          </div>
+          <p>Matthieu Carré · Jacques Dumora · Cédric Brzyski</p>
+        </footer>
+      </section>
+    </main>
+
+    <aside class="presenter-notes" aria-live="polite" aria-hidden="true">
+      <span>NOTES</span>
+      <p></p>
+    </aside>
+
+    <nav class="controls" aria-label="Navigation des slides">
+      <button class="controls__button" data-action="previous" aria-label="Slide précédente">←</button>
+      <div class="progress" aria-label="Progression">
+        <span class="progress__fill"></span>
+      </div>
+      <p class="controls__count"><span>01</span> / 05</p>
+      <button class="controls__button" data-action="next" aria-label="Slide suivante">→</button>
+      <button class="controls__button controls__button--fullscreen" data-action="fullscreen" aria-label="Plein écran">⛶</button>
+    </nav>
+
+    <div class="key-hint">← → naviguer · F plein écran · N notes</div>
+    <script src="presentation.js"></script>
+  </body>
+</html>
