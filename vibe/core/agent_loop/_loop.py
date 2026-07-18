@@ -71,6 +71,7 @@ from vibe.core.middleware import (
     TurnLimitMiddleware,
     make_plan_agent_reminder,
 )
+from vibe.core.model_routing import AdaptiveModelRouter, ModelRoutingDecision
 from vibe.core.plan_session import PlanSession
 from vibe.core.review import ReviewManager
 from vibe.core.rewind import RewindManager
@@ -147,6 +148,7 @@ from vibe.core.types import (
     LLMMessage,
     LLMUsage,
     MessageList,
+    ModelRoutingEvent,
     PlanReviewEndedEvent,
     PlanReviewRequestedEvent,
     RateLimitError,
@@ -269,6 +271,12 @@ class ImagesNotSupportedError(AgentLoopError):
 
 class TeleportError(AgentLoopError):
     """Raised when teleport to Vibe Code fails."""
+
+
+class _ModelEscalation(AgentLoopError):
+    def __init__(self, decision: ModelRoutingDecision) -> None:
+        super().__init__(decision.reason)
+        self.decision = decision
 
 
 def _refusal_error(provider: str, model: str, chunk: LLMChunk) -> RefusalError:
@@ -422,6 +430,14 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
 
         self._injected_backend = backend
         self.backend = self.backend_factory()
+        self._provider_backends: dict[str, tuple[ProviderConfig, BackendLike]] = {}
+        self._owned_backends = [self.backend]
+        if backend is None:
+            active_provider = config.get_active_provider()
+            self._provider_backends[active_provider.name] = (
+                active_provider,
+                self.backend,
+            )
         self._sampling_handler = self._create_sampling_handler(
             backend_getter=lambda: self.backend,
             config_getter=lambda: self.config,
@@ -460,6 +476,8 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         self._reactive_recovery_used: bool = False
         self._pending_injected_messages: list[LLMMessage] = []
         self._pending_clear_context: bool = False
+        self._model_router: AdaptiveModelRouter | None = None
+        self._adaptive_routing_enabled = True
 
         self.experiment_manager = ExperimentManager(
             client=RemoteEvalClient.from_settings(
@@ -602,6 +620,13 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
     def bypass_tool_permissions(self) -> bool:
         return self.config.bypass_tool_permissions
 
+    @property
+    def adaptive_routing_enabled(self) -> bool:
+        return self._adaptive_routing_enabled
+
+    def set_adaptive_routing_enabled(self, enabled: bool) -> None:
+        self._adaptive_routing_enabled = enabled
+
     def _apply_forced_bypass(self) -> None:
         if self._force_bypass_tool_permissions:
             self.base_config.bypass_tool_permissions = True
@@ -733,8 +758,9 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         if self._mcp_pool is not None:
             with contextlib.suppress(Exception):
                 await self._mcp_pool.aclose()
-        with contextlib.suppress(Exception):
-            await self.backend.__aexit__(None, None, None)
+        for backend in self._owned_backends:
+            with contextlib.suppress(Exception):
+                await backend.__aexit__(None, None, None)
         with contextlib.suppress(Exception):
             await self.experiment_manager.aclose()
 
@@ -835,7 +861,12 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
 
     def _select_backend(self, config: AnyVibeConfig | None = None) -> BackendLike:
         config = config or self.config
-        provider = config.get_active_provider()
+        return self._create_backend_for_provider(config.get_active_provider(), config)
+
+    @staticmethod
+    def _create_backend_for_provider(
+        provider: ProviderConfig, config: AnyVibeConfig
+    ) -> BackendLike:
         return create_backend(
             provider=provider,
             timeout=config.api_timeout,
@@ -849,6 +880,20 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 is not None
             ),
         )
+
+    def _backend_for_model(self, model: ModelConfig) -> BackendLike:
+        if self._injected_backend is not None:
+            return self.backend
+
+        provider = self.config.get_provider_for_model(model)
+        cached = self._provider_backends.get(provider.name)
+        if cached is not None and cached[0] == provider:
+            return cached[1]
+
+        backend = self._create_backend_for_provider(provider, self.config)
+        self._provider_backends[provider.name] = (provider, backend)
+        self._owned_backends.append(backend)
+        return backend
 
     async def _save_messages(self, *, allow_empty: bool = False) -> None:
         await self.session_logger.save_interaction(
@@ -908,8 +953,24 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         images: list[ImageAttachment] | None = None,
         user_display_content: UserDisplayContentMetadata | None = None,
     ) -> AsyncGenerator[BaseEvent, None]:
+        self._model_router = None
+        routing_decision: ModelRoutingDecision | None = None
+        if self._adaptive_routing_enabled:
+            self._model_router = AdaptiveModelRouter(
+                self.config.routing,
+                self.config.models,
+                default_model=self.config.active_model,
+            )
+            routing_decision = self._model_router.start_turn(
+                msg, has_images=bool(images)
+            )
+        if routing_decision is not None:
+            self.stats.update_pricing(
+                routing_decision.model.input_price, routing_decision.model.output_price
+            )
+            yield self._routing_event(routing_decision)
         try:
-            active_model = self.config.get_active_model()
+            active_model = self._turn_model()
             model_name = active_model.name
         except ValueError:
             active_model = None
@@ -929,6 +990,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 ):
                     yield event
         finally:
+            self._model_router = None
             # Seal the turn's post-edit boundary so per-turn review can attribute
             # later edits correctly, even if the turn opens then fails, or is
             # cancelled mid-flight.
@@ -1348,13 +1410,12 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                         if is_user_cancellation_event(event):
                             user_cancelled = True
                         yield event
-                except ContextTooLongError:
-                    if not self._should_self_heal():
-                        raise
-                    self._reactive_recovery_used = True
-                    async for event in self._run_compaction():
+                        if routing_decision := self._observe_routing(event):
+                            yield self._routing_event(routing_decision)
+                except (ContextTooLongError, _ModelEscalation) as error:
+                    async for event in self._recover_llm_error(error):
                         yield event
-                    continue  # retry the turn — still the user's first response
+                    continue
                 # A turn ran to completion: count it against the turn budget (so
                 # an overflow-and-retry never does) and mark later turns as
                 # follow-ups.
@@ -1393,6 +1454,18 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             return True
         self.messages.append(retry_msg)
         return False
+
+    async def _recover_llm_error(
+        self, error: ContextTooLongError | _ModelEscalation
+    ) -> AsyncGenerator[BaseEvent]:
+        if isinstance(error, _ModelEscalation):
+            yield self._routing_event(error.decision)
+            return
+        if not self._should_self_heal():
+            raise error
+        self._reactive_recovery_used = True
+        async for event in self._run_compaction():
+            yield event
 
     def _skill_already_loaded(self, name: str) -> bool:
         marker = skill_content_marker(name)
@@ -1605,7 +1678,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         reasoning_message_id: str | None = None
         emitted_tool_call_ids = set[str]()
 
-        async for chunk in self._chat_streaming():
+        async for chunk in self._chat_streaming(model_override=self._turn_model()):
             if message_id is None:
                 message_id = chunk.message.message_id
             if reasoning_message_id is None:
@@ -1629,7 +1702,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 )
 
     async def _get_assistant_event(self) -> AssistantEvent:
-        llm_result = await self._chat()
+        llm_result = await self._chat(model_override=self._turn_model())
         return AssistantEvent(
             content=llm_result.message.content or "",
             message_id=llm_result.message.message_id,
@@ -2101,7 +2174,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
 
         try:
             start_time = time.perf_counter()
-            result = await self.backend.complete(
+            result = await self._backend_for_model(model).complete(
                 model=model,
                 messages=self._messages_for_backend(messages, model),
                 temperature=model.temperature,
@@ -2152,22 +2225,31 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         call_type: TelemetryCallType | None = None,
     ) -> LLMChunk:
         active_model = model_override or self.config.get_active_model()
-        result = await self._complete(
-            model=active_model,
-            messages=self.messages,
-            tools=self.format_handler.get_available_tools(self.tool_manager),
-            tool_choice=self.format_handler.get_tool_choice(),
-            call_type=call_type,
-        )
+        try:
+            result = await self._complete(
+                model=active_model,
+                messages=self.messages,
+                tools=self.format_handler.get_available_tools(self.tool_manager),
+                tool_choice=self.format_handler.get_tool_choice(),
+                call_type=call_type,
+            )
+        except Exception as error:
+            if routing_decision := self._observe_model_failure():
+                raise _ModelEscalation(routing_decision) from error
+            raise
         self.messages.append(result.message)
         if result.stop and result.stop.is_refusal:
             provider = self.config.get_provider_for_model(active_model)
+            if routing_decision := self._observe_model_failure():
+                raise _ModelEscalation(routing_decision)
             raise _refusal_error(provider.name, active_model.name, result)
         return result
 
-    async def _chat_streaming(self) -> AsyncGenerator[LLMChunk]:
-        active_model = self.config.get_active_model()
-        provider = self.config.get_active_provider()
+    async def _chat_streaming(
+        self, model_override: ModelConfig | None = None
+    ) -> AsyncGenerator[LLMChunk]:
+        active_model = model_override or self.config.get_active_model()
+        provider = self.config.get_provider_for_model(active_model)
         backend_metadata = self._build_backend_metadata()
 
         available_tools = self.format_handler.get_available_tools(self.tool_manager)
@@ -2192,13 +2274,14 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             start_time = time.perf_counter()
             usage = LLMUsage()
             chunk_agg: LLMChunk | None = None
-            async for chunk in self.backend.complete_streaming(
+            backend = self._backend_for_model(active_model)
+            async for chunk in backend.complete_streaming(
                 model=active_model,
                 messages=self._messages_for_backend(self.messages, active_model),
                 temperature=active_model.temperature,
                 tools=available_tools,
                 tool_choice=tool_choice,
-                extra_headers=self._get_extra_headers(),
+                extra_headers=self._get_extra_headers(provider),
                 max_tokens=self._max_tokens,
                 metadata=backend_metadata.model_dump(exclude_none=True),
             ):
@@ -2227,9 +2310,15 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
 
             self.messages.append(chunk_agg.message)
             if chunk_agg.stop and chunk_agg.stop.is_refusal:
+                if routing_decision := self._observe_model_failure():
+                    raise _ModelEscalation(routing_decision)
                 raise _refusal_error(provider.name, active_model.name, chunk_agg)
 
         except Exception as e:
+            if isinstance(e, _ModelEscalation):
+                raise
+            if routing_decision := self._observe_model_failure():
+                raise _ModelEscalation(routing_decision) from e
             if isinstance(e, RefusalError):
                 raise
             if _should_raise_rate_limit_error(e):
@@ -2244,6 +2333,35 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             raise RuntimeError(
                 f"API error from {provider.name} (model: {active_model.name}): {e}"
             ) from e
+
+    def _turn_model(self) -> ModelConfig:
+        if self._model_router and self._model_router.current_model:
+            return self._model_router.current_model
+        return self.config.get_active_model()
+
+    def _observe_routing(self, event: BaseEvent) -> ModelRoutingDecision | None:
+        if self._model_router is None:
+            return None
+        if isinstance(event, ToolCallEvent) and event.args is not None:
+            return self._model_router.observe_tool_call(
+                event.tool_name, event.args.model_dump()
+            )
+        if isinstance(event, ToolResultEvent) and (event.error or event.skipped):
+            return self._model_router.observe_tool_failure()
+        return None
+
+    def _observe_model_failure(self) -> ModelRoutingDecision | None:
+        if self._model_router is None:
+            return None
+        return self._model_router.observe_model_failure()
+
+    @staticmethod
+    def _routing_event(decision: ModelRoutingDecision) -> ModelRoutingEvent:
+        return ModelRoutingEvent(
+            model_alias=decision.model.alias,
+            reason=decision.reason,
+            escalated=decision.escalated,
+        )
 
     def _update_stats(self, usage: LLMUsage, time_seconds: float) -> None:
         self.stats.last_turn_duration = time_seconds
@@ -2555,6 +2673,14 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         # config so later refreshes (refresh_config) propagate to them.
         prepared.config_source.point_to(lambda: self.config)
         self.backend = prepared.backend
+        if all(prepared.backend is not backend for backend in self._owned_backends):
+            self._owned_backends.append(prepared.backend)
+        if self._injected_backend is None:
+            active_provider = self.config.get_active_provider()
+            self._provider_backends[active_provider.name] = (
+                active_provider,
+                prepared.backend,
+            )
         self.tool_manager = prepared.tool_manager
         self.skill_manager = prepared.skill_manager
         self.messages.update_system_prompt(prepared.system_prompt)

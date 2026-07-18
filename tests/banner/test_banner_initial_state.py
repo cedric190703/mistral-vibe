@@ -76,6 +76,15 @@ class TestBannerInitialState:
 
         assert banner._initial_state.active_model == "test-model[max]"
 
+    def test_banner_shows_the_routed_model(self) -> None:
+        skill_manager = Mock(spec=SkillManager)
+        skill_manager.custom_skills_count = 0
+        banner = Banner(config=_make_mock_config(), skill_manager=skill_manager)
+
+        banner.set_routed_model("local")
+
+        assert banner.state.active_model == "using local [routed]"
+
     def test_format_meta_counts_includes_connectors(self) -> None:
         skill_manager = Mock(spec=SkillManager)
         skill_manager.custom_skills_count = 0

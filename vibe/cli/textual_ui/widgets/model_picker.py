@@ -15,12 +15,16 @@ from vibe.cli.textual_ui.widgets.navigable_option_list import NavigableOptionLis
 from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 
 
-def _build_option_text(alias: str, is_current: bool) -> Text:
+def _build_option_text(
+    alias: str, provider: str, *, is_current: bool, is_checked: bool
+) -> Text:
     text = Text(no_wrap=True)
-    marker = "› " if is_current else "  "
-    style = "bold" if is_current else ""
-    text.append(marker, style="green" if is_current else "")
-    text.append(alias, style=style)
+    marker = "[✓]" if is_checked else "[ ]"
+    text.append(f"{marker} ", style="bold #FF8205" if is_checked else "bold")
+    text.append(alias, style="bold" if is_current or is_checked else "")
+    text.append(f"  {provider.upper()}", style="dim")
+    if is_current:
+        text.append("  CURRENT", style="bold #FF8205")
     return text
 
 
@@ -30,7 +34,8 @@ class ModelPickerApp(Container):
     can_focus_children = True
 
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("escape", "cancel", "Cancel", show=False)
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("space", "select_highlighted", "Mark", show=False),
     ]
 
     class ModelSelected(Message):
@@ -42,23 +47,49 @@ class ModelPickerApp(Container):
         pass
 
     def __init__(
-        self, model_aliases: list[str], current_model: str, **kwargs: Any
+        self,
+        model_aliases: list[str],
+        current_model: str,
+        model_providers: dict[str, str] | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(id="modelpicker-app", **kwargs)
         self._model_aliases = model_aliases
         self._current_model = current_model
+        self._model_providers = model_providers or {}
+        self._selected_alias: str | None = None
 
     def compose(self) -> ComposeResult:
         options = [
-            Option(_build_option_text(alias, alias == self._current_model), id=alias)
+            Option(
+                _build_option_text(
+                    alias,
+                    self._model_providers.get(alias, "model"),
+                    is_current=alias == self._current_model,
+                    is_checked=(
+                        alias == self._selected_alias
+                        if self._selected_alias is not None
+                        else alias == self._current_model
+                    ),
+                ),
+                id=alias,
+            )
             for alias in self._model_aliases
         ]
         with Vertical(id="modelpicker-content"):
-            yield NoMarkupStatic("Select Model", classes="modelpicker-title")
+            yield NoMarkupStatic("MODEL SELECTOR", classes="modelpicker-title")
+            yield NoMarkupStatic(
+                "Choose the default model used when automatic routing is off.",
+                classes="modelpicker-description",
+            )
+            yield NoMarkupStatic(
+                f"CURRENT  {self._current_model}", classes="modelpicker-current"
+            )
             yield NavigableOptionList(*options, id="modelpicker-options")
             yield NoMarkupStatic(
                 shortcut_hint(
-                    f"{shortcut('↑↓/jk')} Navigate  {shortcut('Enter')} Select  "
+                    f"{shortcut('↑↓/jk')} Navigate  {shortcut('Space')} Mark  "
+                    f"{shortcut('Enter')} Apply  "
                     f"{shortcut('Esc')} Cancel"
                 ),
                 classes="modelpicker-help",
@@ -73,9 +104,30 @@ class ModelPickerApp(Container):
                 break
         option_list.focus()
 
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        if event.option.id:
-            self.post_message(self.ModelSelected(event.option.id))
+    async def on_option_list_option_selected(
+        self, event: OptionList.OptionSelected
+    ) -> None:
+        if event.option.id is None:
+            return
+        if self._selected_alias != event.option.id:
+            self._selected_alias = event.option.id
+            await self._refresh_options(event.option_index)
+            return
+        self.post_message(self.ModelSelected(event.option.id))
+
+    async def action_select_highlighted(self) -> None:
+        option_list = self.query_one(OptionList)
+        if option_list.highlighted is None:
+            return
+        alias = self._model_aliases[option_list.highlighted]
+        self._selected_alias = None if self._selected_alias == alias else alias
+        await self._refresh_options(option_list.highlighted)
+
+    async def _refresh_options(self, highlighted: int) -> None:
+        await self.recompose()
+        option_list = self.query_one(OptionList)
+        option_list.highlighted = highlighted
+        option_list.focus()
 
     def action_cancel(self) -> None:
         self.post_message(self.Cancelled())

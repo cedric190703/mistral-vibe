@@ -45,6 +45,7 @@ from vibe.core.config.models import (
     OtelRedactionMode,
     ProjectContextConfig,
     ProviderConfig,
+    RoutingConfig,
     SessionLoggingConfig,
     TranscribeModelConfig,
     TranscribeProviderConfig,
@@ -130,6 +131,7 @@ class VibeConfigSchema(ConfigSchema):
         AfterValidator(_non_empty),
     ] = Field(default_factory=lambda: normalize_model_configs(DEFAULT_MODELS))
     compaction_model: Annotated[ModelConfig | None, WithReplaceMerge()] = None
+    routing: Annotated[RoutingConfig | None, WithReplaceMerge()] = None
     auto_compact_threshold: Annotated[int, WithReplaceMerge()] = (
         DEFAULT_AUTO_COMPACT_THRESHOLD
     )
@@ -517,6 +519,21 @@ class VibeConfigSchema(ConfigSchema):
                 f"Compaction model '{self.compaction_model.alias}' uses provider "
                 f"'{compaction_provider.name}' but active model uses provider "
                 f"'{active_provider.name}'. They must share the same provider."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_routing_models(self) -> VibeConfigSchema:
+        if self.routing is None:
+            return self
+        missing = [
+            alias
+            for alias in (self.routing.fast_model, self.routing.capable_model)
+            if alias not in self.models
+        ]
+        if missing:
+            raise ValueError(
+                "Routing model aliases are not configured: " + ", ".join(missing)
             )
         return self
 

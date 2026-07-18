@@ -6,8 +6,9 @@ import pytest
 
 from tests.stubs.fake_tool import FakeTool, FakeToolArgs
 from vibe.cli.textual_ui.handlers.event_handler import EventHandler
+from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 from vibe.cli.textual_ui.widgets.tools import ToolResultMessage
-from vibe.core.types import ToolCallEvent, ToolResultEvent
+from vibe.core.types import ModelRoutingEvent, ToolCallEvent, ToolResultEvent
 
 
 def _call_event(call_id: str) -> ToolCallEvent:
@@ -99,6 +100,36 @@ async def test_successful_result_is_not_pending() -> None:
     await handler.handle_event(_ok_result("a"))
 
     assert handler._pending_error_results == []
+
+
+@pytest.mark.asyncio
+async def test_model_routing_event_mounts_a_visible_status() -> None:
+    handler, mount_callback = _make_handler()
+
+    await handler.handle_event(
+        ModelRoutingEvent(model_alias="local", reason="simple task")
+    )
+
+    widget = mount_callback.call_args.args[0]
+    assert isinstance(widget, NoMarkupStatic)
+    assert str(widget.render()) == "Routed to local — simple task"
+
+
+@pytest.mark.asyncio
+async def test_model_routing_event_updates_the_persistent_model_indicator() -> None:
+    model_routed = Mock()
+    handler = EventHandler(
+        mount_callback=AsyncMock(),
+        get_tools_collapsed=lambda: False,
+        on_model_routed=model_routed,
+    )
+    event = ModelRoutingEvent(
+        model_alias="capable", reason="tool call failed", escalated=True
+    )
+
+    await handler.handle_event(event)
+
+    model_routed.assert_called_once_with(event)
 
 
 @pytest.mark.asyncio

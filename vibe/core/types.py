@@ -563,6 +563,12 @@ class SessionTitleUpdatedEvent(BaseEvent):
     title: str
 
 
+class ModelRoutingEvent(BaseEvent):
+    model_alias: str
+    reason: str
+    escalated: bool = False
+
+
 class OutputFormat(StrEnum):
     TEXT = auto()
     JSON = auto()

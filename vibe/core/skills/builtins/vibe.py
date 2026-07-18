@@ -154,6 +154,20 @@ active_transcribe_model = "voxtral-realtime"
 active_tts_model = "voxtral-tts"
 ```
 
+### Adaptive Model Routing
+
+```toml
+[routing]
+fast_model = "local"
+capable_model = "mistral-medium-3.5"
+```
+
+When this section is absent, Vibe automatically uses a configured local model
+for simple turns and `active_model` for complex turns. Use `/routing` to choose
+automatic routing or always use `active_model` for the current session.
+When the fast model cannot serve a request, Vibe tries the selected capable model
+without cycling through unrelated model entries.
+
 ### Providers
 
 ```toml
@@ -609,7 +623,9 @@ Custom agents are TOML files in `~/.vibe/agents/NAME.toml`.
 
 - `/help` - Show help message
 - `/config` - Edit config settings
-- `/model` - Select active model
+- `/model` - Select active model (`Space` marks, `Enter` applies)
+- `/local` - Discover and select models from local providers
+- `/routing` - Choose adaptive routing or the selected model only
 - `/thinking` - Select thinking level
 - `/theme` - Select Textual UI theme (persisted in config)
 - `/reload` - Reload configuration, agent instructions, and skills from disk

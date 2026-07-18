@@ -42,6 +42,7 @@ from vibe.core.config.models import (
     OtelRedactionMode,
     ProjectContextConfig,
     ProviderConfig,
+    RoutingConfig,
     SessionLoggingConfig,
     TranscribeModelConfig,
     TranscribeProviderConfig,
@@ -324,6 +325,7 @@ class VibeConfig(BaseSettings):
         default_factory=lambda: normalize_model_configs(DEFAULT_MODELS)
     )
     compaction_model: ModelConfig | None = None
+    routing: RoutingConfig | None = None
 
     transcribe_providers: list[TranscribeProviderConfig] = Field(
         default_factory=lambda: list(DEFAULT_TRANSCRIBE_PROVIDERS)
