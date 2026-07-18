@@ -17,6 +17,9 @@ Actions:
 - `press_key` — press a single `key` (`Enter`, `Escape`, `Tab`, `ArrowDown`, …).
 - `scroll` — scroll vertically by `amount` pixels (negative scrolls up) to reveal more elements.
 - `back` / `forward` — browser history navigation.
+- `list_tabs` — list the browser's open tabs (each with an `id`, `title`, `url`, and whether it is `active`), returned in the result's `tabs` field.
+- `open_tab` — open `url` in a new tab and switch to it.
+- `switch_tab` — activate the tab with the given `tab_id` (from `list_tabs`) and read it.
 - `console` — return recent browser console messages, uncaught page errors, and failed network requests (in the result's `console` field). Use this to debug why a page or app misbehaves.
 - `screenshot` — capture a PNG of the current page (optional `path`, and `full_page` for the whole scrollable page). The image is shown to you on your next turn if the active model supports vision (and saved to `screenshot_path` for the human). Use it to check visual layout/rendering that the text `snapshot` cannot convey; keep using `snapshot` for reading and interacting with elements.
 - `pause` — hand control to the human for a step you cannot or should not do yourself: a login you lack credentials for, a captcha, or a 2FA prompt. Pass a short `message` describing what to do. The human completes it in the browser window and confirms; the page is then re-read automatically so you can continue.
