@@ -41,8 +41,8 @@ class WorkflowRail(NoMarkupStatic):
         super().__init__(id="workflow-rail")
         self.display = False
 
-    def set_workflow(self, workflow: Workflow) -> None:
-        self.display = workflow.active
+    def set_workflow(self, workflow: Workflow, *, visible: bool = True) -> None:
+        self.display = workflow.active and visible
         active_phase = next(
             (
                 phase
@@ -114,18 +114,22 @@ class WorkflowMapScreen(Screen[None]):
         match self.view_mode:
             case WorkflowViewMode.TEXT:
                 with VerticalScroll(id="workflow-map-body"):
-                    yield NoMarkupStatic(
-                        self._text_view() or self._empty_state(),
-                        id="workflow-text-view",
-                    )
+                    if text_view := self._text_view():
+                        yield NoMarkupStatic(text_view, id="workflow-text-view")
+                    else:
+                        yield NoMarkupStatic(
+                            self._empty_state(), id="workflow-empty-state"
+                        )
             case WorkflowViewMode.GRAPH:
                 with VerticalScroll(
                     id="workflow-map-body", classes="workflow-graph-only"
                 ):
-                    rows = self._node_rows()
-                    yield from rows or [
-                        NoMarkupStatic(self._empty_state(), id="workflow-empty-state")
-                    ]
+                    if metro_graph := self._metro_graph():
+                        yield NoMarkupStatic(metro_graph, id="workflow-metro-graph")
+                    else:
+                        yield NoMarkupStatic(
+                            self._empty_state(), id="workflow-empty-state"
+                        )
             case WorkflowViewMode.BOTH:
                 with Horizontal(id="workflow-map-body"):
                     with VerticalScroll(id="workflow-nodes"):
@@ -174,6 +178,23 @@ class WorkflowMapScreen(Screen[None]):
             WorkflowNodeRow(node, depth=depth, selected=node.id == self.selected_id)
             for node, depth in self._workflow_nodes()
         ]
+
+    def _metro_graph(self) -> str:
+        if not self.workflow.phases:
+            return ""
+        lines: list[str] = []
+        for index, phase in enumerate(self.workflow.phases):
+            lines.append(f"{_SYMBOLS[phase.state]} {phase.title}")
+            for child_index, child in enumerate(phase.children):
+                branch = "└─" if child_index == len(phase.children) - 1 else "├─"
+                lines.append(f"│  {branch} {_SYMBOLS[child.state]} {child.title}")
+                for grandchild in child.children:
+                    lines.append(
+                        f"│     └─ {_SYMBOLS[grandchild.state]} {grandchild.title}"
+                    )
+            if index != len(self.workflow.phases) - 1:
+                lines.extend(["│", "├────────────────"])
+        return "\n".join(lines)
 
     def _text_view(self) -> str:
         lines: list[str] = []

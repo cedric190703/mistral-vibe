@@ -1401,6 +1401,7 @@ class VibeApp(App):  # noqa: PLR0904
         self, message: WorkflowViewPickerApp.ViewSelected
     ) -> None:
         self._workflow_view_mode = message.view_mode
+        self._refresh_workflow(self._workflow_projector.workflow)
         await self._switch_to_input_app()
 
     async def on_workflow_view_picker_app_cancelled(
@@ -4142,7 +4143,9 @@ class VibeApp(App):  # noqa: PLR0904
 
     def _refresh_workflow(self, workflow: Workflow) -> None:
         if self._workflow_rail is not None:
-            self._workflow_rail.set_workflow(workflow)
+            self._workflow_rail.set_workflow(
+                workflow, visible=self._workflow_view_mode != WorkflowViewMode.TEXT
+            )
         if self._workflow_screen is not None:
             self._workflow_screen.refresh_workflow(workflow)
 

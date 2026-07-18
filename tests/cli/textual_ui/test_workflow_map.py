@@ -99,3 +99,25 @@ async def test_empty_graph_view_explains_how_to_start_a_workflow() -> None:
         assert "No active workflow" in str(
             app.screen.query_one("#workflow-empty-state").render()
         )
+
+
+@pytest.mark.asyncio
+async def test_text_view_hides_the_live_workflow_rail() -> None:
+    app = build_test_vibe_app()
+    workflow = app._workflow_projector.start_turn("Fix authentication")
+
+    async with app.run_test() as pilot:
+        app._workflow_view_mode = WorkflowViewMode.TEXT
+        app._refresh_workflow(workflow)
+        await pilot.pause()
+
+        assert not app.query_one(WorkflowRail).display
+
+
+def test_graph_view_renders_a_vertical_metro_route() -> None:
+    projector = WorkflowProjector()
+    workflow = projector.start_turn("Fix authentication")
+    graph = WorkflowMapScreen(workflow, view_mode=WorkflowViewMode.GRAPH)._metro_graph()
+
+    assert "Understand" in graph
+    assert "├────────────────" in graph
