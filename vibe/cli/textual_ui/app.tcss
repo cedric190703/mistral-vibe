@@ -709,6 +709,15 @@ Markdown {
     }
 }
 
+.model-routing-message {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+    padding: 0 1;
+    border-left: thick $primary;
+    color: $foreground;
+}
+
 StatusMessage {
     width: 100%;
     height: auto;

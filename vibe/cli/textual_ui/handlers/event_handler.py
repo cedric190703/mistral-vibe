@@ -33,6 +33,7 @@ from vibe.core.types import (
     CompactEndEvent,
     CompactStartEvent,
     ContextClearedEvent,
+    ModelRoutingEvent,
     PlanReviewEndedEvent,
     PlanReviewRequestedEvent,
     ReasoningEvent,
@@ -165,6 +166,13 @@ class EventHandler:
             case CompactEndEvent():
                 await self.finalize_streaming()
                 await self._handle_compact_end(event)
+            case ModelRoutingEvent():
+                await self.finalize_streaming()
+                await self.mount_callback(
+                    NoMarkupStatic(
+                        self._routing_message(event), classes="model-routing-message"
+                    )
+                )
             case AgentProfileChangedEvent():
                 if self.on_profile_changed:
                     self.on_profile_changed()
@@ -188,6 +196,11 @@ class EventHandler:
                 await self.finalize_streaming()
                 await self._handle_unknown_event(event)
         return None
+
+    @staticmethod
+    def _routing_message(event: ModelRoutingEvent) -> str:
+        action = "Escalated to" if event.escalated else "Routed to"
+        return f"{action} {event.model_alias} — {event.reason}"
 
     def _sanitize_event(self, event: ToolResultEvent) -> ToolResultEvent:
         if isinstance(event, ToolResultEvent):

@@ -446,6 +446,19 @@ enable_system_trust_store = true
 
 `SSL_CERT_FILE` and `SSL_CERT_DIR` are still supported and are loaded as additional trust anchors.
 
+### Adaptive Model Routing
+
+To choose a smaller model for simple turns and escalate to a capable model when
+needed, configure aliases from your `[[models]]` entries:
+
+```toml
+[routing]
+fast_model = "local"
+capable_model = "mistral-medium-3.5"
+```
+
+If `[routing]` is absent, Vibe continues to use `active_model` for every turn.
+
 ### Custom System Prompts
 
 You can create `AGENTS.md` files to add custom instructions. You can also replace the entire system prompt.

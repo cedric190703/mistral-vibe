@@ -154,6 +154,16 @@ active_transcribe_model = "voxtral-realtime"
 active_tts_model = "voxtral-tts"
 ```
 
+### Adaptive Model Routing
+
+```toml
+[routing]
+fast_model = "local"
+capable_model = "mistral-medium-3.5"
+```
+
+When this section is absent, Vibe uses `active_model` for every turn.
+
 ### Providers
 
 ```toml
