@@ -68,7 +68,7 @@ async def test_workflow_map_switches_between_graph_text_and_both_views() -> None
 
 
 @pytest.mark.asyncio
-async def test_workflow_command_picker_opens_the_selected_view() -> None:
+async def test_workflow_command_picker_applies_the_selected_view() -> None:
     app = build_test_vibe_app()
 
     async with app.run_test() as pilot:
@@ -78,5 +78,24 @@ async def test_workflow_command_picker_opens_the_selected_view() -> None:
 
         await pilot.press("enter")
         await pilot.pause()
+        assert not isinstance(app.screen, WorkflowMapScreen)
+
+        app.action_toggle_workflow_map()
+        await pilot.pause()
         assert isinstance(app.screen, WorkflowMapScreen)
         assert app.screen.view_mode == WorkflowViewMode.BOTH
+
+
+@pytest.mark.asyncio
+async def test_empty_graph_view_explains_how_to_start_a_workflow() -> None:
+    app = build_test_vibe_app()
+
+    async with app.run_test() as pilot:
+        app._workflow_view_mode = WorkflowViewMode.GRAPH
+        app.action_toggle_workflow_map()
+        await pilot.pause()
+
+        assert isinstance(app.screen, WorkflowMapScreen)
+        assert "No active workflow" in str(
+            app.screen.query_one("#workflow-empty-state").render()
+        )

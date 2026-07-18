@@ -1402,7 +1402,6 @@ class VibeApp(App):  # noqa: PLR0904
     ) -> None:
         self._workflow_view_mode = message.view_mode
         await self._switch_to_input_app()
-        self.action_toggle_workflow_map()
 
     async def on_workflow_view_picker_app_cancelled(
         self, _event: WorkflowViewPickerApp.Cancelled

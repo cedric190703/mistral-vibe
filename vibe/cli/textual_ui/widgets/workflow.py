@@ -114,12 +114,18 @@ class WorkflowMapScreen(Screen[None]):
         match self.view_mode:
             case WorkflowViewMode.TEXT:
                 with VerticalScroll(id="workflow-map-body"):
-                    yield NoMarkupStatic(self._text_view(), id="workflow-text-view")
+                    yield NoMarkupStatic(
+                        self._text_view() or self._empty_state(),
+                        id="workflow-text-view",
+                    )
             case WorkflowViewMode.GRAPH:
                 with VerticalScroll(
                     id="workflow-map-body", classes="workflow-graph-only"
                 ):
-                    yield from self._node_rows()
+                    rows = self._node_rows()
+                    yield from rows or [
+                        NoMarkupStatic(self._empty_state(), id="workflow-empty-state")
+                    ]
             case WorkflowViewMode.BOTH:
                 with Horizontal(id="workflow-map-body"):
                     with VerticalScroll(id="workflow-nodes"):
@@ -183,6 +189,10 @@ class WorkflowMapScreen(Screen[None]):
                 lines.append(f"{prefix}  {label}: {node.output_preview}")
             lines.extend(f"{prefix}  File: {path}" for path in node.affected_files)
         return "\n".join(lines)
+
+    @staticmethod
+    def _empty_state() -> str:
+        return "No active workflow yet.\n\nSend a prompt that uses tools, then press Ctrl+W to follow it live."
 
     def _detail(self) -> str:
         node = next(
