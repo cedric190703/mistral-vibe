@@ -357,6 +357,18 @@ Advanced: set `cdp_url = "http://127.0.0.1:9222"` to attach to a Chrome you star
 with `--remote-debugging-port=9222` (use `127.0.0.1`, not `localhost`). In that mode
 the tool leaves your browser running on exit.
 
+### Control your own Chrome (extension)
+
+For the lowest-friction way to use your real browser, install the **Vibe in Chrome**
+extension (`distribution/chrome-extension/`, load unpacked — see its README). The
+tool then drives your actual Chrome tab over a local WebSocket, and **falls back to
+Playwright automatically** when no extension is connected. Toggle with:
+
+```toml
+[tools.vibe-in-chrome]
+prefer_extension = true   # default; try the extension before launching Playwright
+```
+
 ### Safety
 
 Page content is untrusted and enters the model's context, so treat the browser as a

@@ -753,8 +753,10 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 await task
         with contextlib.suppress(Exception):
             from vibe.core.tools.builtins.vibe_in_chrome import close_browser
+            from vibe.core.tools.builtins.vibe_in_chrome_bridge import close_bridge
 
             await close_browser()
+            await close_bridge()
         if self._mcp_pool is not None:
             with contextlib.suppress(Exception):
                 await self._mcp_pool.aclose()
