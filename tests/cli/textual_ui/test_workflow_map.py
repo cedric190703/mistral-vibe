@@ -5,6 +5,7 @@ import pytest
 from tests.conftest import build_test_vibe_app
 from vibe.cli.textual_ui.widgets.workflow import (
     WorkflowMapScreen,
+    WorkflowNodeRow,
     WorkflowRail,
     WorkflowViewMode,
 )
@@ -56,10 +57,13 @@ async def test_workflow_map_switches_between_graph_text_and_both_views() -> None
         await pilot.pause()
         assert isinstance(app.screen, WorkflowMapScreen)
         assert app.screen.query_one("#workflow-text-view")
+        assert not app.screen.query("#workflow-metro-route")
 
         await pilot.press("g")
         await pilot.pause()
         assert app.screen.query_one("#workflow-map-body")
+        assert app.screen.query_one("#workflow-metro-route")
+        assert app.screen.query(WorkflowNodeRow)
         assert not app.screen.query("#workflow-detail")
 
         await pilot.press("b")
@@ -117,7 +121,7 @@ async def test_text_view_hides_the_live_workflow_rail() -> None:
 def test_graph_view_renders_a_vertical_metro_route() -> None:
     projector = WorkflowProjector()
     workflow = projector.start_turn("Fix authentication")
-    graph = WorkflowMapScreen(workflow, view_mode=WorkflowViewMode.GRAPH)._metro_graph()
+    route = WorkflowMapScreen(workflow, view_mode=WorkflowViewMode.GRAPH)._metro_route()
 
-    assert "Understand" in graph
-    assert "├────────────────" in graph
+    assert "UNDERSTAND" in route.plain
+    assert "IMPLEMENT" in route.plain

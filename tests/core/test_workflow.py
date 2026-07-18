@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from tests.stubs.fake_tool import FakeTool, FakeToolArgs
+from vibe.core.tools.builtins.todo import TodoArgs, TodoItem, TodoStatus
 from vibe.core.types import ToolCallEvent, ToolResultEvent, UserMessageEvent
 from vibe.core.workflow import WorkflowNodeState, WorkflowProjector
 
@@ -58,5 +59,45 @@ def test_projector_nests_subagent_task_under_its_workflow_node() -> None:
     workflow = projector.apply(_call("task-1", tool_name="task"))
     implement = next(phase for phase in workflow.phases if phase.id == "implement")
 
-    assert implement.children[0].children[0].title == "Subagent task"
+    assert implement.children[0].children[0].title == "Subagent"
     assert implement.children[0].children[0].state == WorkflowNodeState.RUNNING
+
+
+def test_projector_finishes_phases_and_exposes_todo_items() -> None:
+    projector = WorkflowProjector()
+    projector.start_turn("Fix auth")
+    todo_call = ToolCallEvent(
+        tool_call_id="plan-1",
+        tool_name="todo",
+        tool_class=FakeTool,
+        args=TodoArgs(
+            action="write",
+            todos=[
+                TodoItem(id="read", content="Read the authentication flow"),
+                TodoItem(
+                    id="test",
+                    content="Add a regression test",
+                    status=TodoStatus.COMPLETED,
+                ),
+            ],
+        ),
+    )
+
+    workflow = projector.apply(todo_call)
+    plan = next(phase for phase in workflow.phases if phase.id == "plan")
+    assert [item.title for item in plan.children[0].children] == [
+        "Read the authentication flow",
+        "Add a regression test",
+    ]
+
+    workflow = projector.apply(
+        ToolResultEvent(tool_name="todo", tool_class=FakeTool, tool_call_id="plan-1")
+    )
+    plan = next(phase for phase in workflow.phases if phase.id == "plan")
+    assert plan.state == WorkflowNodeState.COMPLETED
+    assert plan.children[0].children[0].state == WorkflowNodeState.PENDING
+
+    workflow = projector.finish_turn()
+    answer = next(phase for phase in workflow.phases if phase.id == "answer")
+    assert answer.children[0].title == "Response ready"
+    assert answer.state == WorkflowNodeState.COMPLETED

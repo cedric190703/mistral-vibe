@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum, auto
 from time import monotonic
 from typing import ClassVar
@@ -22,6 +23,14 @@ _SYMBOLS = {
     WorkflowNodeState.CANCELLED: "■",
 }
 
+_ROUTE_STYLES = {
+    WorkflowNodeState.PENDING: "dim",
+    WorkflowNodeState.RUNNING: "bold #FF8205",
+    WorkflowNodeState.COMPLETED: "bold #52B788",
+    WorkflowNodeState.FAILED: "bold #E76F51",
+    WorkflowNodeState.CANCELLED: "dim",
+}
+
 
 class WorkflowViewMode(StrEnum):
     GRAPH = auto()
@@ -34,6 +43,13 @@ def _elapsed(node: WorkflowNode) -> str:
     if seconds is None and node.started_at is not None:
         seconds = monotonic() - node.started_at
     return f"{seconds:.1f}s" if seconds is not None else "—"
+
+
+@dataclass(frozen=True)
+class WorkflowMapNode:
+    node: WorkflowNode
+    depth: int
+    connector: str
 
 
 class WorkflowRail(NoMarkupStatic):
@@ -72,16 +88,37 @@ class WorkflowNodeRow(NoMarkupStatic):
             super().__init__()
             self.node_id = node_id
 
-    def __init__(self, node: WorkflowNode, *, depth: int, selected: bool) -> None:
-        prefix = "  " * depth
-        branch = "└─ " if depth else ""
+    def __init__(self, entry: WorkflowMapNode, *, selected: bool) -> None:
+        self.node = entry.node
+        self.connector = entry.connector
+        self.depth = entry.depth
+        self._pulse = False
         super().__init__(
-            f"{prefix}{branch}{_SYMBOLS[node.state]} {node.title}",
-            classes=f"workflow-node workflow-{node.state.value}"
-            + (" workflow-phase" if depth == 0 else "")
+            self._content(),
+            classes=f"workflow-node workflow-{entry.node.state.value}"
+            + (" workflow-phase" if entry.depth == 0 else "")
             + (" selected" if selected else ""),
         )
-        self.node_id = node.id
+        self.node_id = entry.node.id
+
+    def on_mount(self) -> None:
+        if self.node.state == WorkflowNodeState.RUNNING:
+            self.set_interval(0.8, self._toggle_pulse)
+
+    def _toggle_pulse(self) -> None:
+        self._pulse = not self._pulse
+        self.update(self._content())
+
+    def _content(self) -> Text:
+        marker = "●" if self._pulse else _SYMBOLS[self.node.state]
+        text = Text(self.connector, style="bold #FF8205")
+        text.append(f"{marker} ")
+        text.append(self.node.title)
+        if self.depth == 0:
+            text.append(f"  {self.node.state.upper()}", style="dim")
+        elif self.node.duration is not None:
+            text.append(f"  {_elapsed(self.node)}", style="dim")
+        return text
 
     def on_click(self) -> None:
         self.post_message(self.Selected(self.node_id))
@@ -109,8 +146,11 @@ class WorkflowMapScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield NoMarkupStatic("WORKFLOW MAP", id="workflow-map-eyebrow")
-        yield NoMarkupStatic(self.workflow.title, id="workflow-map-title")
-        yield NoMarkupStatic(self._header_status(), id="workflow-map-status")
+        with Horizontal(id="workflow-map-heading"):
+            yield NoMarkupStatic(self.workflow.title, id="workflow-map-title")
+            yield NoMarkupStatic(self._header_status(), id="workflow-map-status")
+        if self.view_mode != WorkflowViewMode.TEXT:
+            yield NoMarkupStatic(self._metro_route(), id="workflow-metro-route")
         match self.view_mode:
             case WorkflowViewMode.TEXT:
                 with VerticalScroll(id="workflow-map-body"):
@@ -124,8 +164,11 @@ class WorkflowMapScreen(Screen[None]):
                 with VerticalScroll(
                     id="workflow-map-body", classes="workflow-graph-only"
                 ):
-                    if metro_graph := self._metro_graph():
-                        yield NoMarkupStatic(metro_graph, id="workflow-metro-graph")
+                    if self.workflow.phases:
+                        yield NoMarkupStatic(
+                            "STATIONS", classes="workflow-section-label"
+                        )
+                        yield from self._node_rows()
                     else:
                         yield NoMarkupStatic(
                             self._empty_state(), id="workflow-empty-state"
@@ -133,6 +176,9 @@ class WorkflowMapScreen(Screen[None]):
             case WorkflowViewMode.BOTH:
                 with Horizontal(id="workflow-map-body"):
                     with VerticalScroll(id="workflow-nodes"):
+                        yield NoMarkupStatic(
+                            "STATIONS", classes="workflow-section-label"
+                        )
                         yield from self._node_rows()
                     yield NoMarkupStatic(self._detail(), id="workflow-detail")
         yield NoMarkupStatic(
@@ -142,7 +188,7 @@ class WorkflowMapScreen(Screen[None]):
 
     def refresh_workflow(self, workflow: Workflow) -> None:
         self.workflow = workflow
-        ids = {node.id for node, _ in self._workflow_nodes()}
+        ids = {entry.node.id for entry in self._workflow_nodes()}
         if self.selected_id not in ids:
             self.selected_id = self._preferred_node_id()
         self.call_later(self.recompose)
@@ -151,64 +197,74 @@ class WorkflowMapScreen(Screen[None]):
         nodes = self._workflow_nodes()
         return next(
             (
-                node.id
-                for node, depth in nodes
-                if depth and node.state == WorkflowNodeState.RUNNING
+                entry.node.id
+                for entry in nodes
+                if entry.depth and entry.node.state == WorkflowNodeState.RUNNING
             ),
-            next((node.id for node, _ in nodes), None),
+            next((entry.node.id for entry in nodes), None),
         )
 
     def _header_status(self) -> str:
-        nodes = [node for node, depth in self._workflow_nodes() if depth]
+        nodes = [entry.node for entry in self._workflow_nodes() if entry.depth]
         running = sum(node.state == WorkflowNodeState.RUNNING for node in nodes)
         completed = sum(node.state == WorkflowNodeState.COMPLETED for node in nodes)
         return f"LIVE · {running} active · {completed} completed"
 
-    def _workflow_nodes(self) -> list[tuple[WorkflowNode, int]]:
-        nodes: list[tuple[WorkflowNode, int]] = []
+    def _workflow_nodes(self) -> list[WorkflowMapNode]:
+        nodes: list[WorkflowMapNode] = []
         for phase in self.workflow.phases:
-            nodes.append((phase, 0))
-            for child in phase.children:
-                nodes.append((child, 1))
-                nodes.extend((grandchild, 2) for grandchild in child.children)
+            nodes.append(WorkflowMapNode(phase, 0, "◆━━ "))
+            for child_index, child in enumerate(phase.children):
+                child_connector = (
+                    "┃  └─ " if child_index == len(phase.children) - 1 else "┃  ├─ "
+                )
+                nodes.append(WorkflowMapNode(child, 1, child_connector))
+                for grandchild_index, grandchild in enumerate(child.children):
+                    grandchild_connector = (
+                        "┃  │  └─ "
+                        if grandchild_index == len(child.children) - 1
+                        else "┃  │  ├─ "
+                    )
+                    nodes.append(WorkflowMapNode(grandchild, 2, grandchild_connector))
         return nodes
 
     def _node_rows(self) -> list[WorkflowNodeRow]:
         return [
-            WorkflowNodeRow(node, depth=depth, selected=node.id == self.selected_id)
-            for node, depth in self._workflow_nodes()
+            WorkflowNodeRow(entry, selected=entry.node.id == self.selected_id)
+            for entry in self._workflow_nodes()
         ]
 
-    def _metro_graph(self) -> str:
+    def _metro_route(self) -> Text:
         if not self.workflow.phases:
-            return ""
-        lines: list[str] = []
+            return Text("Route will appear when the agent starts working.", style="dim")
+        route = Text()
         for index, phase in enumerate(self.workflow.phases):
-            lines.append(f"{_SYMBOLS[phase.state]} {phase.title}")
-            for child_index, child in enumerate(phase.children):
-                branch = "└─" if child_index == len(phase.children) - 1 else "├─"
-                lines.append(f"│  {branch} {_SYMBOLS[child.state]} {child.title}")
-                for grandchild in child.children:
-                    lines.append(
-                        f"│     └─ {_SYMBOLS[grandchild.state]} {grandchild.title}"
-                    )
+            route.append(f" {_SYMBOLS[phase.state]} ", style=_ROUTE_STYLES[phase.state])
+            route.append(phase.title.upper(), style=_ROUTE_STYLES[phase.state])
             if index != len(self.workflow.phases) - 1:
-                lines.extend(["│", "├────────────────"])
-        return "\n".join(lines)
+                route.append(" ─── ", style="bold #FF8205")
+        return route
 
     def _text_view(self) -> str:
         lines: list[str] = []
-        for node, depth in self._workflow_nodes():
-            prefix = "  " * depth
+        for entry in self._workflow_nodes():
+            node = entry.node
+            prefix = "  " * entry.depth
+            if entry.depth == 0:
+                lines.extend([
+                    f"{_SYMBOLS[node.state]} {node.title.upper()} — {node.state}",
+                    "",
+                ])
+                continue
             lines.append(f"{prefix}{_SYMBOLS[node.state]} {node.title}")
-            if depth:
-                lines.append(f"{prefix}  {node.summary}")
+            lines.append(f"{prefix}  {node.summary}")
             if node.input_preview:
-                lines.append(f"{prefix}  Input: {node.input_preview}")
+                lines.append(f"{prefix}  Input  {node.input_preview}")
             if node.output_preview:
                 label = "Error" if node.state == WorkflowNodeState.FAILED else "Result"
-                lines.append(f"{prefix}  {label}: {node.output_preview}")
-            lines.extend(f"{prefix}  File: {path}" for path in node.affected_files)
+                lines.append(f"{prefix}  {label}  {node.output_preview}")
+            lines.extend(f"{prefix}  File  {path}" for path in node.affected_files)
+            lines.append("")
         return "\n".join(lines)
 
     @staticmethod
@@ -217,27 +273,33 @@ class WorkflowMapScreen(Screen[None]):
 
     def _detail(self) -> str:
         node = next(
-            (item for item, _ in self._workflow_nodes() if item.id == self.selected_id),
+            (
+                entry.node
+                for entry in self._workflow_nodes()
+                if entry.node.id == self.selected_id
+            ),
             None,
         )
         if node is None:
             return "Select a workflow step to inspect it."
         lines = [
-            f"{_SYMBOLS[node.state]} {node.state.title()}",
-            f"Elapsed: {_elapsed(node)}",
+            "STATION DETAIL",
+            f"{_SYMBOLS[node.state]} {node.title}",
+            f"{node.state.upper()}  ·  {_elapsed(node)} elapsed",
             "",
+            "ACTIVITY",
             node.summary,
         ]
         if node.input_preview:
-            lines.extend(["", "Input", node.input_preview])
+            lines.extend(["", "INPUT", node.input_preview])
         if node.output_preview:
             lines.extend([
                 "",
-                "Result" if node.state != WorkflowNodeState.FAILED else "Error",
+                "RESULT" if node.state != WorkflowNodeState.FAILED else "ERROR",
                 node.output_preview,
             ])
         if node.affected_files:
-            lines.extend(["", "Files", *node.affected_files])
+            lines.extend(["", "AFFECTED FILES", *node.affected_files])
         return "\n".join(lines)
 
     async def on_workflow_node_row_selected(
@@ -268,7 +330,7 @@ class WorkflowMapScreen(Screen[None]):
         await self.recompose()
 
     async def _move_selection(self, offset: int) -> None:
-        ids = [node.id for node, _ in self._workflow_nodes()]
+        ids = [entry.node.id for entry in self._workflow_nodes()]
         if not ids:
             return
         try:

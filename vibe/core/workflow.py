@@ -68,11 +68,13 @@ def _event_files(event: ToolCallEvent) -> list[str]:
     if event.args is None:
         return []
     data = event.args.model_dump(mode="json")
-    paths = [
-        str(value)
-        for key, value in data.items()
-        if key in {"file_path", "path", "paths"} and isinstance(value, str)
-    ]
+    paths: list[str] = []
+    for key in ("file_path", "path", "paths", "files"):
+        match data.get(key):
+            case str(path):
+                paths.append(path)
+            case list() as values:
+                paths.extend(str(value) for value in values if isinstance(value, str))
     return paths[:5]
 
 
@@ -90,6 +92,14 @@ def _phase_for(event: ToolCallEvent) -> WorkflowPhase:
 
 
 def _call_summary(event: ToolCallEvent, files: list[str]) -> str:
+    args = event.args.model_dump(mode="json") if event.args else {}
+    if event.tool_name == "task":
+        task = _bounded(args.get("task"), 96)
+        return f"Delegating: {task}" if task else "Running subagent"
+    if event.tool_name == "todo":
+        todos = args.get("todos")
+        if isinstance(todos, list):
+            return f"Updating {len(todos)} plan item{'s' if len(todos) != 1 else ''}"
     verb = {
         "read_file": "Reading",
         "grep": "Searching",
@@ -104,6 +114,47 @@ def _call_summary(event: ToolCallEvent, files: list[str]) -> str:
     if files:
         return f"{verb} {files[0]}"
     return verb
+
+
+def _todo_nodes(event: ToolCallEvent) -> list[WorkflowNode]:
+    if event.tool_name != "todo" or event.args is None:
+        return []
+    data = event.args.model_dump(mode="json")
+    todos = data.get("todos")
+    if not isinstance(todos, list):
+        return []
+    state_by_status = {
+        "pending": WorkflowNodeState.PENDING,
+        "in_progress": WorkflowNodeState.RUNNING,
+        "completed": WorkflowNodeState.COMPLETED,
+        "cancelled": WorkflowNodeState.CANCELLED,
+    }
+    return [
+        WorkflowNode(
+            id=f"{event.tool_call_id}:{item_id}",
+            title=content,
+            summary="Plan item",
+            state=state_by_status.get(status, WorkflowNodeState.PENDING),
+        )
+        for item in todos
+        if isinstance(item, dict)
+        and isinstance(item_id := item.get("id"), str)
+        and isinstance(content := item.get("content"), str)
+        and isinstance(status := item.get("status"), str)
+    ]
+
+
+def _phase_state(children: list[WorkflowNode]) -> WorkflowNodeState:
+    states = {child.state for child in children}
+    if WorkflowNodeState.RUNNING in states:
+        return WorkflowNodeState.RUNNING
+    if WorkflowNodeState.FAILED in states:
+        return WorkflowNodeState.FAILED
+    if children and states == {WorkflowNodeState.COMPLETED}:
+        return WorkflowNodeState.COMPLETED
+    if children and states == {WorkflowNodeState.CANCELLED}:
+        return WorkflowNodeState.CANCELLED
+    return WorkflowNodeState.PENDING
 
 
 class WorkflowProjector:
@@ -127,6 +178,8 @@ class WorkflowProjector:
         return self.workflow
 
     def finish_turn(self, *, cancelled: bool = False, failed: bool = False) -> Workflow:
+        if not self.workflow.active:
+            return self.workflow
         phases = []
         for phase in self.workflow.phases:
             children = [
@@ -141,12 +194,17 @@ class WorkflowProjector:
                 else node
                 for node in phase.children
             ]
-            phase_state = (
-                WorkflowNodeState.COMPLETED
-                if children
-                and all(node.state == WorkflowNodeState.COMPLETED for node in children)
-                else phase.state
-            )
+            if phase.id == WorkflowPhase.ANSWER.value and not (cancelled or failed):
+                children = [
+                    *children,
+                    WorkflowNode(
+                        id="answer:ready",
+                        title="Response ready",
+                        summary="Preparing the final answer",
+                        state=WorkflowNodeState.COMPLETED,
+                    ),
+                ]
+            phase_state = _phase_state(children)
             phases.append(
                 phase.model_copy(update={"children": children, "state": phase_state})
             )
@@ -176,15 +234,21 @@ class WorkflowProjector:
             started_at=monotonic(),
             input_preview=_bounded(args),
             affected_files=files,
+            children=_todo_nodes(event),
         )
         if event.tool_name == "task":
+            task_data = event.args.model_dump(mode="json") if event.args else {}
+            task = _bounded(task_data.get("task"), 120)
+            agent = task_data.get("agent")
             node = node.model_copy(
                 update={
                     "children": [
                         WorkflowNode(
                             id=f"{event.tool_call_id}:agent",
-                            title="Subagent task",
-                            summary="Working in a nested agent",
+                            title=f"{agent} subagent"
+                            if isinstance(agent, str)
+                            else "Subagent",
+                            summary=task or "Working in a nested agent",
                             state=WorkflowNodeState.RUNNING,
                         )
                     ]
@@ -218,11 +282,18 @@ class WorkflowProjector:
                             "children": [
                                 child.model_copy(update={"state": state})
                                 for child in node.children
-                            ],
+                            ]
+                            if event.tool_name != "todo"
+                            or state != WorkflowNodeState.COMPLETED
+                            else node.children,
                         }
                     )
                 )
-            phases.append(phase.model_copy(update={"children": children}))
+            phases.append(
+                phase.model_copy(
+                    update={"children": children, "state": _phase_state(children)}
+                )
+            )
         self.workflow = self.workflow.model_copy(update={"phases": phases})
         return self.workflow
 
@@ -231,7 +302,10 @@ class WorkflowProjector:
     ) -> Workflow:
         phases = [
             phase.model_copy(
-                update={"state": state, "children": [*phase.children, node]}
+                update={
+                    "state": _phase_state([*phase.children, node]),
+                    "children": [*phase.children, node],
+                }
             )
             if phase.id == target.value
             else phase
