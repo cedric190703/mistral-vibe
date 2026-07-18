@@ -1,6 +1,9 @@
-# Présentation Vibe
+# Présentations Vibe
 
-Deck HTML/CSS de 5 slides, conçu pour accompagner exactement la trame orale de 2 min 30.
+Le dossier contient :
+
+- le deck HTML/CSS interactif de 5 slides ;
+- le deck PowerPoint anglais de 7 slides, généré à partir de `generate-pptx.cjs`.
 
 ## Lancer
 
@@ -11,6 +14,17 @@ uv run python -m http.server 8080 --directory presentation
 ```
 
 Puis ouvrir <http://localhost:8080>.
+
+## Générer le PowerPoint
+
+Installer la version utilisée pour générer le deck puis lancer :
+
+```bash
+npm install --no-save pptxgenjs@4.0.1
+node presentation/generate-pptx.cjs
+```
+
+Le fichier est créé dans `presentation/Vibe_Presentation_EN.pptx`.
 
 ## Contrôles
 
