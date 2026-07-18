@@ -53,6 +53,11 @@ class CommandRegistry:
                 description="Select active model",
                 handler="_show_model",
             ),
+            "local": Command(
+                aliases=frozenset(["/local"]),
+                description="Discover and select a local model",
+                handler="_show_local",
+            ),
             "thinking": Command(
                 aliases=frozenset(["/thinking"]),
                 description="Select thinking level",

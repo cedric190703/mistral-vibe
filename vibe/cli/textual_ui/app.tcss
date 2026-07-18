@@ -1691,6 +1691,22 @@ NarratorStatus {
     margin: 0;
 }
 
+#local-provider-picker {
+    height: auto;
+    width: 100%;
+    background: transparent;
+}
+
+#local-provider-picker-content {
+    height: auto;
+    width: 100%;
+}
+
+#local-provider-options {
+    height: auto;
+    max-height: 12;
+}
+
 #modelpicker-content {
     width: 100%;
     height: auto;
