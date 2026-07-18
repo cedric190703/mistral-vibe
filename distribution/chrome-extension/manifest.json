@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Vibe in Chrome",
+  "version": "0.1.0",
+  "description": "Lets Mistral Vibe drive this Chrome browser (your real profile and logins) over a local connection.",
+  "permissions": ["tabs", "scripting", "alarms"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Vibe in Chrome"
+  }
+}
