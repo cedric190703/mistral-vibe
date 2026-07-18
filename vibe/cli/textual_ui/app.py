@@ -3046,14 +3046,6 @@ class VibeApp(App):  # noqa: PLR0904
     async def _show_routing(self, **kwargs: Any) -> None:
         if self._current_bottom_app == BottomApp.RoutingPicker:
             return
-        if self.config.routing is None:
-            await self._mount_and_scroll(
-                UserCommandMessage(
-                    "Adaptive routing is unavailable. Add `fast_model` and "
-                    "`capable_model` under `[routing]` in config.toml."
-                )
-            )
-            return
         await self._switch_to_routing_picker_app()
 
     async def _show_local(self, **kwargs: Any) -> None:

@@ -13,8 +13,33 @@ def _models() -> dict[str, ModelConfig]:
 
 def _router() -> AdaptiveModelRouter:
     return AdaptiveModelRouter(
-        RoutingConfig(fast_model="fast", capable_model="capable"), _models()
+        RoutingConfig(fast_model="fast", capable_model="capable"),
+        _models(),
+        default_model="capable",
     )
+
+
+def test_router_uses_a_local_model_without_routing_configuration() -> None:
+    models = {
+        "fast": ModelConfig(name="small", provider="local-11434", alias="fast"),
+        "capable": _models()["capable"],
+    }
+    decision = AdaptiveModelRouter(None, models, default_model="capable").start_turn(
+        "Explain this function"
+    )
+
+    assert decision is not None
+    assert decision.model.alias == "fast"
+
+
+def test_router_uses_the_default_model_without_a_local_model() -> None:
+    models = {"capable": _models()["capable"]}
+    decision = AdaptiveModelRouter(None, models, default_model="capable").start_turn(
+        "Explain this function"
+    )
+
+    assert decision is not None
+    assert decision.model.alias == "capable"
 
 
 def test_router_chooses_fast_model_for_a_simple_prompt() -> None:

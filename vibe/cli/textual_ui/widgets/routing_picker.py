@@ -36,7 +36,7 @@ class RoutingPickerApp(Container):
     def compose(self) -> ComposeResult:
         options = (
             Option(
-                f"{'✓' if self._enabled else '○'} Auto routing — choose a model for each task",
+                f"{'✓' if self._enabled else '○'} Auto routing — use a local model when available",
                 id="auto",
             ),
             Option(

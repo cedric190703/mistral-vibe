@@ -448,8 +448,9 @@ enable_system_trust_store = true
 
 ### Adaptive Model Routing
 
-To choose a smaller model for simple turns and escalate to a capable model when
-needed, configure aliases from your `[[models]]` entries:
+Vibe automatically uses a configured local model for simple turns and
+`active_model` for complex turns. To override those automatic choices, configure
+aliases from your `[[models]]` entries:
 
 ```toml
 [routing]
@@ -457,7 +458,9 @@ fast_model = "local"
 capable_model = "mistral-medium-3.5"
 ```
 
-If `[routing]` is absent, Vibe continues to use `active_model` for every turn.
+If `[routing]` is absent, Vibe uses the automatic choices described above. Use
+`/routing` to switch between automatic routing and always using `active_model`
+for the current session.
 
 ### Custom System Prompts
 

@@ -156,15 +156,15 @@ async def test_routing_picker_escape_keeps_the_current_session_choice() -> None:
 
 
 @pytest.mark.asyncio
-async def test_routing_without_config_explains_how_to_enable_it() -> None:
+async def test_routing_without_config_uses_automatic_defaults() -> None:
     app = build_test_vibe_app(config=_make_config_with_models())
     async with app.run_test() as pilot:
         await pilot.pause(0.1)
         await app._show_routing()
         await pilot.pause(0.2)
 
-        assert app._current_bottom_app == BottomApp.Input
-        assert len(app.query(RoutingPickerApp)) == 0
+        assert app._current_bottom_app == BottomApp.RoutingPicker
+        assert len(app.query(RoutingPickerApp)) == 1
 
 
 @pytest.mark.asyncio

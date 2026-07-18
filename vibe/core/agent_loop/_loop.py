@@ -469,7 +469,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         self._pending_injected_messages: list[LLMMessage] = []
         self._pending_clear_context: bool = False
         self._model_router: AdaptiveModelRouter | None = None
-        self._adaptive_routing_enabled = config.routing is not None
+        self._adaptive_routing_enabled = True
 
         self.experiment_manager = ExperimentManager(
             client=RemoteEvalClient.from_settings(
@@ -617,8 +617,6 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         return self._adaptive_routing_enabled
 
     def set_adaptive_routing_enabled(self, enabled: bool) -> None:
-        if enabled and self.config.routing is None:
-            raise ValueError("Adaptive routing requires a [routing] configuration.")
         self._adaptive_routing_enabled = enabled
 
     def _apply_forced_bypass(self) -> None:
@@ -926,6 +924,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         self._model_router = AdaptiveModelRouter(
             self.config.routing if self._adaptive_routing_enabled else None,
             self.config.models,
+            default_model=self.config.active_model,
         )
         routing_decision = self._model_router.start_turn(msg, has_images=bool(images))
         if routing_decision is not None:

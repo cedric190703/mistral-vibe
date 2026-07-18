@@ -34,10 +34,14 @@ class ModelRoutingDecision:
 
 class AdaptiveModelRouter:
     def __init__(
-        self, routing: RoutingConfig | None, models: Mapping[str, ModelConfig]
+        self,
+        routing: RoutingConfig | None,
+        models: Mapping[str, ModelConfig],
+        *,
+        default_model: str,
     ) -> None:
-        self._routing = routing
         self._models = models
+        self._routing = routing or self._default_routing(default_model)
         self._current_model: ModelConfig | None = None
         self._escalated = False
         self._tool_calls = 0
@@ -106,6 +110,17 @@ class AdaptiveModelRouter:
         return ModelRoutingDecision(
             model=self._current_model, reason=reason, complexity=0, escalated=True
         )
+
+    def _default_routing(self, default_model: str) -> RoutingConfig:
+        fast_model = next(
+            (
+                alias
+                for alias, model in self._models.items()
+                if model.provider.startswith("local-")
+            ),
+            default_model,
+        )
+        return RoutingConfig(fast_model=fast_model, capable_model=default_model)
 
     @staticmethod
     def _complexity(prompt: str, *, has_images: bool) -> int:

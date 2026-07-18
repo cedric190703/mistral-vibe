@@ -162,7 +162,9 @@ fast_model = "local"
 capable_model = "mistral-medium-3.5"
 ```
 
-When this section is absent, Vibe uses `active_model` for every turn.
+When this section is absent, Vibe automatically uses a configured local model
+for simple turns and `active_model` for complex turns. Use `/routing` to choose
+automatic routing or always use `active_model` for the current session.
 
 ### Providers
 
