@@ -619,6 +619,13 @@ Custom agents are TOML files in `~/.vibe/agents/NAME.toml`.
 - `/compact` - Compact conversation history by summarizing
 - `/status` - Display agent statistics
 - `/voice` - Configure voice settings
+- `/skills` - List every discovered skill, including disabled skills, grouped by
+  built-in, project, global, and registry source. Use `-v`/`--verbose` for paths
+  and metadata, or `--json` for a flat machine-readable array.
+- `/skills status` - List enabled and disabled skill names.
+- `/skills enable <name>...`, `/skills disable <name>...`, and `/skills toggle
+  <name>` - Update project-level `.vibe/config.toml` after confirmation. Exact
+  names and case-insensitive globs are supported; builtin skills cannot be disabled.
 - `/mcp` - Display MCP servers and connector status; pass a server or connector
   name to list its tools or open its auth panel when authentication is required
 - `/mcp add <url>` - Add a hosted OAuth MCP server. Supports `--name <alias>`,
@@ -754,6 +761,18 @@ Two entry points:
 Skills with `user-invocable: false` are model-only: they are hidden from the
 slash menu and `/skill-name` will not resolve them (it is treated as a plain
 prompt). The model can still load them via the `skill` tool.
+
+### Inspecting and Managing Skills
+
+`/skills` lists every discovered skill, including disabled and model-only skills,
+with its built-in, project, global, or registry source. `/skills --verbose` adds
+path and metadata; `/skills --json` returns the full flat schema; `/skills status`
+splits names by enabled state.
+
+`/skills enable <name>...`, `/skills disable <name>...`, and `/skills toggle
+<name>` resolve exact names or case-insensitive glob patterns, confirm the diff,
+and persist project-only changes to `.vibe/config.toml`. Builtin skills cannot be
+disabled. The command offers to run `/reload` after writing the configuration.
 
 ## Environment Variables
 

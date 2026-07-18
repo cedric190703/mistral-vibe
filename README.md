@@ -392,7 +392,24 @@ skill_paths = ["/path/to/custom/skills"]
 
 ### Managing Skills
 
-Enable or disable skills using patterns in your configuration:
+Use `/skills` in the interactive CLI to inspect every discovered skill, including disabled skills, and see whether it comes from the built-in, project, global, or registry context:
+
+```text
+/skills
+/skills --verbose
+/skills --json
+/skills status
+```
+
+Project-level enable/disable changes support exact names and case-insensitive glob patterns. Vibe shows the resolved changes, asks for confirmation, writes them to `.vibe/config.toml`, and offers to reload:
+
+```text
+/skills enable code-review test-*
+/skills disable experimental-*
+/skills toggle code-review
+```
+
+Builtin skills cannot be disabled. You can also manage the same settings directly in configuration:
 
 ```toml
 # Enable specific skills
@@ -402,7 +419,7 @@ enabled_skills = ["code-review", "test-*"]
 disabled_skills = ["experimental-*"]
 ```
 
-Skills support the same pattern matching as tools (exact names, glob patterns, and regex).
+Configuration patterns support exact names, glob patterns, and regex. The `/skills` management subcommands accept exact names and glob patterns.
 
 ## Configuration
 

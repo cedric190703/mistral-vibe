@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from jsonpointer import JsonPointer
@@ -8,7 +9,10 @@ from jsonpointer import JsonPointer
 from vibe.core.config._settings import VibeConfig
 from vibe.core.config.default_orchestrator import build_default_orchestrator
 from vibe.core.config.layers.overrides import OverridesLayer
+from vibe.core.config.layers.project import ProjectConfigLayer
 from vibe.core.config.models import merge_model_payloads, normalize_model_configs
+from vibe.core.config.orchestrator import ConfigOrchestrator
+from vibe.core.config.vibe_schema import VibeConfigSchema
 from vibe.core.logger import logger
 
 if TYPE_CHECKING:
@@ -49,6 +53,18 @@ class LegacyConfigOrchestrator:
         if target_layer == OverridesLayer.NAME:
             _set_pointer_in_place(self._config, path, value)
             return []
+        if target_layer == "project-toml":
+            project_layer = ProjectConfigLayer(path=Path.cwd(), walk_parents=False)
+            await project_layer.resolve_trust()
+            await project_layer.load()
+            orchestrator = await ConfigOrchestrator.create(
+                schema=VibeConfigSchema,
+                layers=[project_layer],
+                default_layer_resolver=lambda: project_layer,
+            )
+            failures = await orchestrator.set_field(path, value, reason=reason)
+            await self.reload()
+            return failures
         updates = _pointer_to_nested_update(path, value)
         VibeConfig.save_updates(
             _with_current_models_when_missing(self._config, updates)

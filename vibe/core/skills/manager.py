@@ -13,6 +13,7 @@ from vibe.core.skills.models import (
     SkillConfigIssue,
     SkillInfo,
     SkillMetadata,
+    SkillScope,
 )
 from vibe.core.skills.parser import SkillParseError, parse_skill_markdown
 from vibe.core.utils import name_matches
@@ -27,8 +28,11 @@ class SkillManager:
         self._config_getter = config_getter
         self._search_paths = self._compute_search_paths(self._config)
         self._config_issues: list[SkillConfigIssue] = []
+        self.discovered_skills: Mapping[str, SkillInfo] = MappingProxyType(
+            self._discover_skills()
+        )
         self.available_skills: Mapping[str, SkillInfo] = MappingProxyType(
-            self._apply_filters(self._discover_skills())
+            self._apply_filters(dict(self.discovered_skills))
         )
 
         if self.available_skills:
@@ -51,13 +55,15 @@ class SkillManager:
             return {
                 name: info
                 for name, info in skills.items()
-                if name_matches(name, self._config.enabled_skills)
+                if name in BUILTIN_SKILLS
+                or name_matches(name, self._config.enabled_skills)
             }
         if self._config.disabled_skills:
             return {
                 name: info
                 for name, info in skills.items()
-                if not name_matches(name, self._config.disabled_skills)
+                if name in BUILTIN_SKILLS
+                or not name_matches(name, self._config.disabled_skills)
             }
         return dict(skills)
 
@@ -83,10 +89,18 @@ class SkillManager:
 
     def _discover_skills(self) -> dict[str, SkillInfo]:
         skills: dict[str, SkillInfo] = {**BUILTIN_SKILLS}
+        project_paths = {
+            path.resolve() for path in get_harness_files_manager().project_skills_dirs
+        }
         for base in self._search_paths:
             if not base.is_dir():
                 continue
-            for name, info in self._discover_skills_in_dir(base).items():
+            scope = (
+                SkillScope.PROJECT
+                if base.resolve() in project_paths
+                else SkillScope.GLOBAL
+            )
+            for name, info in self._discover_skills_in_dir(base, scope=scope).items():
                 if name not in skills:
                     skills[name] = info
                 else:
@@ -98,7 +112,9 @@ class SkillManager:
                     )
         return skills
 
-    def _discover_skills_in_dir(self, base: Path) -> dict[str, SkillInfo]:
+    def _discover_skills_in_dir(
+        self, base: Path, *, scope: SkillScope
+    ) -> dict[str, SkillInfo]:
         skills: dict[str, SkillInfo] = {}
         for skill_dir in base.iterdir():
             if not skill_dir.is_dir():
@@ -106,7 +122,7 @@ class SkillManager:
             skill_file = skill_dir / "SKILL.md"
             if not skill_file.is_file():
                 continue
-            if (skill_info := self._try_load_skill(skill_file)) is None:
+            if (skill_info := self._try_load_skill(skill_file, scope=scope)) is None:
                 continue
             if skill_info.name in BUILTIN_SKILLS:
                 logger.debug(
@@ -126,9 +142,11 @@ class SkillManager:
             skills[skill_info.name] = skill_info
         return skills
 
-    def _try_load_skill(self, skill_file: Path) -> SkillInfo | None:
+    def _try_load_skill(
+        self, skill_file: Path, *, scope: SkillScope
+    ) -> SkillInfo | None:
         try:
-            skill_info = self._parse_skill_file(skill_file)
+            skill_info = self._parse_skill_file(skill_file, scope=scope)
         except Exception as e:
             logger.warning("Failed to parse skill at %s: %s", skill_file, e)
             self._config_issues.append(
@@ -137,7 +155,7 @@ class SkillManager:
             return None
         return skill_info
 
-    def _parse_skill_file(self, skill_path: Path) -> SkillInfo:
+    def _parse_skill_file(self, skill_path: Path, *, scope: SkillScope) -> SkillInfo:
         try:
             content = read_safe(skill_path).text
         except OSError as e:
@@ -155,7 +173,9 @@ class SkillManager:
                 skill_path,
             )
 
-        return SkillInfo.from_metadata(metadata, skill_path, prompt=body.strip())
+        return SkillInfo.from_metadata(
+            metadata, skill_path, prompt=body.strip(), scope=scope
+        )
 
     @property
     def custom_skills_count(self) -> int:

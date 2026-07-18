@@ -150,6 +150,18 @@ class TestCommandRegistry:
         assert "login <alias>" in command.description
         assert "logout <alias>" in command.description
 
+    def test_skills_command_registration_preserves_subcommand_args(self) -> None:
+        registry = CommandRegistry()
+
+        result = registry.parse_command("/skills enable search-*")
+
+        assert result is not None
+        command_name, command, args = result
+        assert command_name == "skills"
+        assert command.handler == "_show_skills"
+        assert args == "enable search-*"
+        assert "toggle" in command.description
+
     def test_data_retention_command_registration(self) -> None:
         registry = CommandRegistry()
         result = registry.parse_command("/data-retention")

@@ -540,6 +540,19 @@ class TestTelemetryClient:
         assert telemetry_events[1]["properties"]["command"] == "my_skill"
         assert telemetry_events[1]["properties"]["command_type"] == "skill"
 
+    def test_send_skill_configuration_changed_payload(
+        self, telemetry_events: list[dict[str, Any]]
+    ) -> None:
+        config = build_test_vibe_config(enable_telemetry=True)
+        client = TelemetryClient(config_getter=lambda: config)
+
+        client.send_skill_configuration_changed(action="disable", count=2)
+
+        assert len(telemetry_events) == 1
+        assert telemetry_events[0]["event_name"] == "vibe.skill_configuration_changed"
+        assert telemetry_events[0]["properties"]["action"] == "disable"
+        assert telemetry_events[0]["properties"]["count"] == 2
+
     def test_send_teleport_completed_payload(
         self, telemetry_events: list[dict[str, Any]]
     ) -> None:

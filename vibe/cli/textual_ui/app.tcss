@@ -488,7 +488,8 @@ Markdown {
 .interrupt-message,
 .error-message,
 .warning-message,
-.user-command-message {
+.user-command-message,
+.skills-command-message {
     margin-top: 0;
     margin-bottom: 0;
     height: auto;
@@ -585,6 +586,30 @@ Markdown {
         & > MarkdownBlock:last-child {
             margin-bottom: 0;
         }
+    }
+}
+
+.skills-command-content {
+    width: 1fr;
+    height: auto;
+    margin: 0;
+    padding-right: 2;
+}
+
+.skills-command-line {
+    width: 100%;
+    height: auto;
+}
+
+.skills-command-line--header {
+    text-style: bold;
+}
+
+.skills-command-line--disabled {
+    color: $text-muted;
+
+    &:ansi {
+        text-style: dim;
     }
 }
 

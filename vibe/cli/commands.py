@@ -144,6 +144,14 @@ class CommandRegistry:
                 ),
                 handler="_show_mcp",
             ),
+            "skills": Command(
+                aliases=frozenset(["/skills"]),
+                description=(
+                    "List and manage discovered skills. Options: -v, --verbose, "
+                    "--json; subcommands: enable, disable, toggle, status"
+                ),
+                handler="_show_skills",
+            ),
             "voice": Command(
                 aliases=frozenset(["/voice"]),
                 description="Configure voice settings",

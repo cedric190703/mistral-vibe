@@ -15,9 +15,16 @@ class ProjectConfigLayer(BaseTomlConfigLayer):
     until a trusted .vibe/config.toml is found.
     """
 
-    def __init__(self, *, path: Path | None = None, name: str = "project-toml") -> None:
+    def __init__(
+        self,
+        *,
+        path: Path | None = None,
+        name: str = "project-toml",
+        walk_parents: bool = True,
+    ) -> None:
         super().__init__(name=name)
         self._root = path or Path.cwd()
+        self._walk_parents = walk_parents
         self._config_file_path: Path | None = None
         self._is_set = False
         self._find_lock = asyncio.Lock()
@@ -78,7 +85,12 @@ class ProjectConfigLayer(BaseTomlConfigLayer):
             if self._is_set:
                 return
 
-            for directory in [self._root, *self._root.parents]:
+            directories = (
+                [self._root, *self._root.parents]
+                if self._walk_parents
+                else [self._root]
+            )
+            for directory in directories:
                 if directory == VIBE_HOME.path.parent:
                     break
 

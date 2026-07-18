@@ -70,6 +70,17 @@ from vibe.cli.textual_ui.notifications import (
 from vibe.cli.textual_ui.quit_manager import QuitManager
 from vibe.cli.textual_ui.scheduled_loop_runner import ScheduledLoopRunner
 from vibe.cli.textual_ui.session_exit import print_session_resume_message
+from vibe.cli.textual_ui.skills_commands import (
+    SkillDisplayLine,
+    SkillsAction,
+    SkillsCommandMessage,
+    build_skill_state_update,
+    format_skills_json,
+    format_skills_status,
+    format_skills_text,
+    parse_skills_command,
+    resolve_skill_patterns,
+)
 from vibe.cli.textual_ui.widgets.approval_app import ApprovalApp
 from vibe.cli.textual_ui.widgets.banner.banner import Banner
 from vibe.cli.textual_ui.widgets.chat_input import ChatInputContainer
@@ -201,6 +212,7 @@ from vibe.core.session.saved_sessions import (
 )
 from vibe.core.session.session_loader import SessionLoader
 from vibe.core.session.title_format import format_session_title
+from vibe.core.skills.models import SkillSource
 from vibe.core.telemetry.types import (
     ProjectPickerTelemetryPayload,
     ProjectSelectionSource,
@@ -2903,6 +2915,150 @@ class VibeApp(App):  # noqa: PLR0904
 
         if args.login:
             await self._mcp_login(result.name)
+
+    async def _show_skills(self, cmd_args: str = "", **kwargs: Any) -> None:
+        try:
+            command = parse_skills_command(cmd_args)
+        except ValueError as exc:
+            await self._mount_and_scroll(ErrorMessage(str(exc), collapsed=True))
+            return
+
+        skills = self.agent_loop.skill_manager.discovered_skills
+        enabled_names = set(self.agent_loop.skill_manager.available_skills)
+        match command.action:
+            case SkillsAction.LIST:
+                if command.json_output:
+                    await self._mount_and_scroll(
+                        SkillsCommandMessage([
+                            SkillDisplayLine(format_skills_json(skills, enabled_names))
+                        ])
+                    )
+                    return
+                await self._mount_and_scroll(
+                    SkillsCommandMessage(
+                        format_skills_text(
+                            skills, enabled_names, verbose=command.verbose
+                        )
+                    )
+                )
+            case SkillsAction.STATUS:
+                await self._mount_and_scroll(
+                    SkillsCommandMessage(format_skills_status(skills, enabled_names))
+                )
+            case SkillsAction.ENABLE | SkillsAction.DISABLE | SkillsAction.TOGGLE:
+                await self._update_skills(command.action, command.names)
+
+    async def _update_skills(
+        self, action: SkillsAction, patterns: tuple[str, ...]
+    ) -> None:
+        skills = self.agent_loop.skill_manager.discovered_skills
+        enabled_names = set(self.agent_loop.skill_manager.available_skills)
+        try:
+            names = resolve_skill_patterns(patterns, skills)
+        except ValueError as exc:
+            await self._mount_and_scroll(ErrorMessage(str(exc), collapsed=True))
+            return
+
+        target_enabled = action == SkillsAction.ENABLE
+        if action == SkillsAction.TOGGLE:
+            target_enabled = names[0] not in enabled_names
+
+        if not target_enabled:
+            builtin_names = [
+                name for name in names if skills[name].source == SkillSource.BUILTIN
+            ]
+            if builtin_names:
+                name = builtin_names[0]
+                await self._mount_and_scroll(
+                    ErrorMessage(
+                        f"Cannot disable builtin skill '{name}'. "
+                        "Builtin skills are always available.",
+                        collapsed=True,
+                    )
+                )
+                return
+
+        update = build_skill_state_update(
+            skills=skills,
+            enabled_names=enabled_names,
+            configured_enabled=self.config.enabled_skills,
+            configured_disabled=self.config.disabled_skills,
+            names=names,
+            target_enabled=target_enabled,
+        )
+        state = "enabled" if target_enabled else "disabled"
+        if not update.changed_names:
+            await self._mount_and_scroll(
+                UserCommandMessage(
+                    f"{names[0]} is already {state}"
+                    if len(names) == 1
+                    else f"All matched skills are already {state}."
+                )
+            )
+            return
+
+        verb = "enable" if target_enabled else "disable"
+        changed = ", ".join(update.changed_names)
+        if not await self._confirm_skills_change(
+            f"Will {verb}: {changed}. Apply these changes?"
+        ):
+            await self._mount_and_scroll(UserCommandMessage("Skill changes cancelled."))
+            return
+
+        failures = await self.agent_loop.config_orchestrator.set_field(
+            "/enabled_skills",
+            update.enabled_skills,
+            reason=f"{verb.title()} skills from /skills",
+            target_layer="project-toml",
+        )
+        failures.extend(
+            await self.agent_loop.config_orchestrator.set_field(
+                "/disabled_skills",
+                update.disabled_skills,
+                reason=f"{verb.title()} skills from /skills",
+                target_layer="project-toml",
+            )
+        )
+        if failures:
+            await self._mount_and_scroll(
+                ErrorMessage(
+                    f"Failed to update project skill configuration: {failures[0]}",
+                    collapsed=True,
+                )
+            )
+            return
+
+        self.agent_loop.telemetry_client.send_skill_configuration_changed(
+            action=verb, count=len(update.changed_names)
+        )
+        await self._mount_and_scroll(UserCommandMessage(f"{verb.title()}d: {changed}"))
+        if await self._confirm_skills_change("Reload now?"):
+            await self._reload_config()
+        else:
+            await self._mount_and_scroll(
+                UserCommandMessage("Run `/reload` to apply the skill changes.")
+            )
+
+    async def _confirm_skills_change(self, question: str) -> bool:
+        apply_label = "Yes"
+        result = await self._user_input_callback(
+            AskUserQuestionArgs(
+                questions=[
+                    Question(
+                        question=question,
+                        header="Skills",
+                        options=[Choice(label=apply_label), Choice(label="No")],
+                        hide_other=True,
+                    )
+                ]
+            )
+        )
+        return (
+            isinstance(result, AskUserQuestionResult)
+            and not result.cancelled
+            and bool(result.answers)
+            and result.answers[0].answer == apply_label
+        )
 
     async def _show_mcp(self, cmd_args: str = "", **kwargs: Any) -> None:
         if await self._maybe_handle_mcp_subcommand(cmd_args):

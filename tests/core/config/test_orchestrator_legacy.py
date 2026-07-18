@@ -17,6 +17,7 @@ from vibe.core.config.orchestrator_legacy import (
     load_config_orchestrator,
 )
 from vibe.core.config.orchestrator_port import ConfigOrchestratorPort
+from vibe.core.trusted_folders import trusted_folders_manager
 
 OrchestratorFactory = Callable[[], Awaitable[ConfigOrchestratorPort[AnyVibeConfig]]]
 
@@ -100,6 +101,22 @@ async def test_set_field_persist_path_writes_to_config_file(config_dir: Path) ->
     assert result == []
     with (config_dir / "config.toml").open("rb") as file:
         assert tomllib.load(file)["displayed_workdir"] == "persisted"
+
+
+@pytest.mark.asyncio
+async def test_set_field_project_layer_creates_project_config(
+    tmp_working_directory: Path,
+) -> None:
+    trusted_folders_manager.add_trusted(tmp_working_directory)
+    orchestrator = LegacyConfigOrchestrator(VibeConfig.load())
+
+    result = await orchestrator.set_field(
+        "/disabled_skills", ["test-skill"], target_layer="project-toml"
+    )
+
+    assert result == []
+    with (tmp_working_directory / ".vibe" / "config.toml").open("rb") as file:
+        assert tomllib.load(file)["disabled_skills"] == ["test-skill"]
 
 
 @pytest.mark.asyncio

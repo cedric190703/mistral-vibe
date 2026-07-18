@@ -10,6 +10,7 @@ from tests.skills.conftest import create_skill
 from vibe.core.config import VibeConfig
 from vibe.core.skills.builtins import BUILTIN_SKILLS
 from vibe.core.skills.manager import SkillManager
+from vibe.core.skills.models import SkillScope
 from vibe.core.trusted_folders import trusted_folders_manager
 
 
@@ -37,6 +38,23 @@ class TestSkillManagerDiscovery:
 
         assert "test-skill" in manager.available_skills
         assert manager.available_skills["test-skill"].description == "A test skill"
+        assert manager.available_skills["test-skill"].scope == SkillScope.GLOBAL
+
+    def test_discovered_skills_includes_disabled_skills(self, skills_dir: Path) -> None:
+        create_skill(skills_dir, "disabled-skill", "Disabled skill")
+
+        config = build_test_vibe_config(
+            skill_paths=[skills_dir], disabled_skills=["disabled-skill"]
+        )
+        manager = SkillManager(lambda: config)
+
+        assert "disabled-skill" in manager.discovered_skills
+        assert "disabled-skill" not in manager.available_skills
+
+    def test_discovered_skills_is_frozen(self, skill_manager: SkillManager) -> None:
+        frozen_skills = cast(dict[str, object], skill_manager.discovered_skills)
+        with pytest.raises(TypeError):
+            frozen_skills["new-skill"] = object()
 
     def test_discovers_multiple_skills(self, skills_dir: Path) -> None:
         create_skill(skills_dir, "skill-one", "First skill")
@@ -169,6 +187,7 @@ class TestSkillManagerSearchPaths:
             manager.available_skills["vibe-skill"].description
             == "Skill from .vibe/skills"
         )
+        assert manager.available_skills["vibe-skill"].scope == SkillScope.PROJECT
 
     def test_discovers_from_agents_skills_when_cwd_trusted(
         self, tmp_working_directory: Path
@@ -301,10 +320,11 @@ class TestSkillManagerFiltering:
         manager = SkillManager(lambda: config)
 
         skills = manager.available_skills
-        assert len(skills) == 2
+        assert len(skills) == 2 + len(BUILTIN_SKILLS)
         assert "skill-a" in skills
         assert "skill-b" not in skills
         assert "skill-c" in skills
+        assert set(BUILTIN_SKILLS) <= set(skills)
 
     def test_disabled_skills_excludes_disabled(self, skills_dir: Path) -> None:
         create_skill(skills_dir, "skill-a", "Skill A")
@@ -336,8 +356,9 @@ class TestSkillManagerFiltering:
         manager = SkillManager(lambda: config)
 
         skills = manager.available_skills
-        assert len(skills) == 1
+        assert len(skills) == 1 + len(BUILTIN_SKILLS)
         assert "skill-a" in skills
+        assert set(BUILTIN_SKILLS) <= set(skills)
 
     def test_glob_pattern_matching(self, skills_dir: Path) -> None:
         create_skill(skills_dir, "search-code", "Search code")
@@ -350,7 +371,7 @@ class TestSkillManagerFiltering:
         manager = SkillManager(lambda: config)
 
         skills = manager.available_skills
-        assert len(skills) == 2
+        assert len(skills) == 2 + len(BUILTIN_SKILLS)
         assert "search-code" in skills
         assert "search-docs" in skills
         assert "other-skill" not in skills
@@ -366,7 +387,7 @@ class TestSkillManagerFiltering:
         manager = SkillManager(lambda: config)
 
         skills = manager.available_skills
-        assert len(skills) == 2
+        assert len(skills) == 2 + len(BUILTIN_SKILLS)
         assert "skill-v1" in skills
         assert "skill-v2" in skills
         assert "other-skill" not in skills

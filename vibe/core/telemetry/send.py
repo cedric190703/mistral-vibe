@@ -307,6 +307,13 @@ class TelemetryClient:
         payload = {"command": command.lstrip("/"), "command_type": command_type}
         self.send_telemetry_event("vibe.slash_command_used", payload)
 
+    def send_skill_configuration_changed(
+        self, *, action: Literal["enable", "disable"], count: int
+    ) -> None:
+        self.send_telemetry_event(
+            "vibe.skill_configuration_changed", {"action": action, "count": count}
+        )
+
     def send_new_session(
         self, has_agents_md: bool, nb_skills: int, nb_mcp_servers: int, nb_models: int
     ) -> None:
