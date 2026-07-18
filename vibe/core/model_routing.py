@@ -43,7 +43,8 @@ class AdaptiveModelRouter:
         self._models = models
         self._routing = routing or self._default_routing(default_model)
         self._current_model: ModelConfig | None = None
-        self._escalated = False
+        self._candidate_aliases: list[str] = []
+        self._candidate_index = -1
         self._tool_calls = 0
         self._failed_tools = 0
         self._tool_fingerprints: dict[str, int] = {}
@@ -58,14 +59,20 @@ class AdaptiveModelRouter:
         if self._routing is None:
             return None
         complexity = self._complexity(prompt, has_images=has_images)
-        if complexity >= _CAPABLE_MODEL_SCORE:
-            self._current_model = self._models[self._routing.capable_model]
-            return ModelRoutingDecision(
-                model=self._current_model, reason="complex task", complexity=complexity
-            )
-        self._current_model = self._models[self._routing.fast_model]
+        preferred_model = (
+            self._routing.capable_model
+            if complexity >= _CAPABLE_MODEL_SCORE
+            else self._routing.fast_model
+        )
+        self._candidate_aliases = self._candidate_order(preferred_model)
+        self._candidate_index = 0
+        self._current_model = self._models[self._candidate_aliases[0]]
         return ModelRoutingDecision(
-            model=self._current_model, reason="simple task", complexity=complexity
+            model=self._current_model,
+            reason="complex task"
+            if complexity >= _CAPABLE_MODEL_SCORE
+            else "simple task",
+            complexity=complexity,
         )
 
     def observe_tool_call(
@@ -95,21 +102,33 @@ class AdaptiveModelRouter:
         return None
 
     def observe_model_failure(self) -> ModelRoutingDecision | None:
-        return self._escalate("fast model request failed")
+        return self._advance_model("model request failed")
 
     def _escalate(self, reason: str) -> ModelRoutingDecision | None:
         if (
             self._routing is None
-            or self._escalated
             or self._current_model is None
             or self._current_model.alias != self._routing.fast_model
         ):
             return None
-        self._escalated = True
-        self._current_model = self._models[self._routing.capable_model]
+        return self._advance_model(reason)
+
+    def _advance_model(self, reason: str) -> ModelRoutingDecision | None:
+        if self._candidate_index + 1 >= len(self._candidate_aliases):
+            return None
+        self._candidate_index += 1
+        self._current_model = self._models[
+            self._candidate_aliases[self._candidate_index]
+        ]
         return ModelRoutingDecision(
             model=self._current_model, reason=reason, complexity=0, escalated=True
         )
+
+    def _candidate_order(self, preferred_model: str) -> list[str]:
+        assert self._routing is not None
+        preferred = [preferred_model]
+        routing_models = [self._routing.capable_model, self._routing.fast_model]
+        return list(dict.fromkeys([*preferred, *routing_models, *self._models]))
 
     def _default_routing(self, default_model: str) -> RoutingConfig:
         fast_model = next(
@@ -120,7 +139,15 @@ class AdaptiveModelRouter:
             ),
             default_model,
         )
-        return RoutingConfig(fast_model=fast_model, capable_model=default_model)
+        capable_model = next(
+            (
+                alias
+                for alias, model in self._models.items()
+                if alias != fast_model and not model.provider.startswith("local-")
+            ),
+            default_model,
+        )
+        return RoutingConfig(fast_model=fast_model, capable_model=capable_model)
 
     @staticmethod
     def _complexity(prompt: str, *, has_images: bool) -> int:

@@ -31,6 +31,14 @@ def test_router_uses_a_local_model_without_routing_configuration() -> None:
     assert decision is not None
     assert decision.model.alias == "fast"
 
+    fallback = AdaptiveModelRouter(None, models, default_model="fast")
+    fallback.start_turn("Explain this function")
+    decision = fallback.observe_model_failure()
+
+    assert decision is not None
+    assert decision.model.alias == "capable"
+    assert decision.reason == "model request failed"
+
 
 def test_router_uses_the_default_model_without_a_local_model() -> None:
     models = {"capable": _models()["capable"]}
@@ -84,3 +92,25 @@ def test_router_escalates_after_repeating_the_same_tool_call() -> None:
     assert decision is not None
     assert decision.escalated
     assert decision.reason == "repeated tool call"
+
+
+def test_router_tries_each_configured_model_after_model_failures() -> None:
+    models = {
+        **_models(),
+        "backup": ModelConfig(name="backup", provider="mistral", alias="backup"),
+    }
+    router = AdaptiveModelRouter(
+        RoutingConfig(fast_model="fast", capable_model="capable"),
+        models,
+        default_model="capable",
+    )
+    router.start_turn("Explain this function")
+
+    capable = router.observe_model_failure()
+    backup = router.observe_model_failure()
+
+    assert capable is not None
+    assert capable.model.alias == "capable"
+    assert backup is not None
+    assert backup.model.alias == "backup"
+    assert router.observe_model_failure() is None

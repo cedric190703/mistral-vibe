@@ -460,7 +460,8 @@ capable_model = "mistral-medium-3.5"
 
 If `[routing]` is absent, Vibe uses the automatic choices described above. Use
 `/routing` to switch between automatic routing and always using `active_model`
-for the current session.
+for the current session. When a routed model cannot serve a request, Vibe tries
+the next configured model without retrying the failed alias.
 
 ### Custom System Prompts
 
