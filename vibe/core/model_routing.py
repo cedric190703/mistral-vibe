@@ -8,10 +8,17 @@ import re
 from vibe.core.config.models import ModelConfig, RoutingConfig
 
 _COMPLEXITY_KEYWORDS = {
+    "analyse",
+    "analyze",
     "architecture",
+    "build",
     "design",
+    "develop",
+    "idea",
+    "implement",
     "migration",
     "multi-file",
+    "project",
     "refactor",
     "redesign",
 }
@@ -128,7 +135,7 @@ class AdaptiveModelRouter:
         assert self._routing is not None
         preferred = [preferred_model]
         routing_models = [self._routing.capable_model, self._routing.fast_model]
-        return list(dict.fromkeys([*preferred, *routing_models, *self._models]))
+        return list(dict.fromkeys([*preferred, *routing_models]))
 
     def _default_routing(self, default_model: str) -> RoutingConfig:
         fast_model = next(
@@ -139,14 +146,19 @@ class AdaptiveModelRouter:
             ),
             default_model,
         )
-        capable_model = next(
-            (
-                alias
-                for alias, model in self._models.items()
-                if alias != fast_model and not model.provider.startswith("local-")
-            ),
-            default_model,
-        )
+        capable_model = default_model
+        if capable_model == fast_model:
+            capable_model = next(
+                (
+                    alias
+                    for alias, model in self._models.items()
+                    if alias != fast_model and not model.provider.startswith("local-")
+                ),
+                next(
+                    (alias for alias in self._models if alias != fast_model),
+                    default_model,
+                ),
+            )
         return RoutingConfig(fast_model=fast_model, capable_model=capable_model)
 
     @staticmethod

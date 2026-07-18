@@ -921,12 +921,17 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         images: list[ImageAttachment] | None = None,
         user_display_content: UserDisplayContentMetadata | None = None,
     ) -> AsyncGenerator[BaseEvent, None]:
-        self._model_router = AdaptiveModelRouter(
-            self.config.routing if self._adaptive_routing_enabled else None,
-            self.config.models,
-            default_model=self.config.active_model,
-        )
-        routing_decision = self._model_router.start_turn(msg, has_images=bool(images))
+        self._model_router = None
+        routing_decision: ModelRoutingDecision | None = None
+        if self._adaptive_routing_enabled:
+            self._model_router = AdaptiveModelRouter(
+                self.config.routing,
+                self.config.models,
+                default_model=self.config.active_model,
+            )
+            routing_decision = self._model_router.start_turn(
+                msg, has_images=bool(images)
+            )
         if routing_decision is not None:
             self.stats.update_pricing(
                 routing_decision.model.input_price, routing_decision.model.output_price

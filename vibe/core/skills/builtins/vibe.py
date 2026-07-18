@@ -165,7 +165,8 @@ capable_model = "mistral-medium-3.5"
 When this section is absent, Vibe automatically uses a configured local model
 for simple turns and `active_model` for complex turns. Use `/routing` to choose
 automatic routing or always use `active_model` for the current session.
-When a routed model cannot serve a request, Vibe tries the next configured model.
+When the fast model cannot serve a request, Vibe tries the selected capable model
+without cycling through unrelated model entries.
 
 ### Providers
 

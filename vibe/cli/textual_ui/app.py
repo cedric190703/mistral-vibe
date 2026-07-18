@@ -1387,6 +1387,7 @@ class VibeApp(App):  # noqa: PLR0904
     ) -> None:
         self.agent_loop.set_adaptive_routing_enabled(message.enabled)
         await self._switch_to_input_app()
+        self._refresh_banner()
         mode = (
             "Adaptive model routing enabled."
             if message.enabled
