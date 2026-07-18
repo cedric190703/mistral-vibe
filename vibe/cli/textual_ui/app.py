@@ -141,7 +141,12 @@ from vibe.cli.textual_ui.widgets.vibe_code_project import (
     suggested_default_branch,
 )
 from vibe.cli.textual_ui.widgets.voice_app import VoiceApp
-from vibe.cli.textual_ui.widgets.workflow import WorkflowMapScreen, WorkflowRail
+from vibe.cli.textual_ui.widgets.workflow import (
+    WorkflowMapScreen,
+    WorkflowRail,
+    WorkflowViewMode,
+)
+from vibe.cli.textual_ui.widgets.workflow_view_picker import WorkflowViewPickerApp
 from vibe.cli.textual_ui.windowing import (
     HISTORY_RESUME_TAIL_MESSAGES,
     LOAD_MORE_BATCH_SIZE,
@@ -328,6 +333,7 @@ class BottomApp(StrEnum):
     MCP = auto()
     MCPOAuth = auto()
     ModelPicker = auto()
+    WorkflowViewPicker = auto()
     ProxySetup = auto()
     Question = auto()
     ThemePicker = auto()
@@ -607,6 +613,7 @@ class VibeApp(App):  # noqa: PLR0904
         self._workflow_projector = WorkflowProjector()
         self._workflow_rail: WorkflowRail | None = None
         self._workflow_screen: WorkflowMapScreen | None = None
+        self._workflow_view_mode = WorkflowViewMode.BOTH
 
     @property
     def config(self) -> AnyVibeConfig:
@@ -1387,6 +1394,18 @@ class VibeApp(App):  # noqa: PLR0904
 
     async def on_model_picker_app_cancelled(
         self, _event: ModelPickerApp.Cancelled
+    ) -> None:
+        await self._switch_to_input_app()
+
+    async def on_workflow_view_picker_app_view_selected(
+        self, message: WorkflowViewPickerApp.ViewSelected
+    ) -> None:
+        self._workflow_view_mode = message.view_mode
+        await self._switch_to_input_app()
+        self.action_toggle_workflow_map()
+
+    async def on_workflow_view_picker_app_cancelled(
+        self, _event: WorkflowViewPickerApp.Cancelled
     ) -> None:
         await self._switch_to_input_app()
 
@@ -2999,6 +3018,11 @@ class VibeApp(App):  # noqa: PLR0904
             return
         await self._switch_to_model_picker_app()
 
+    async def _show_workflow_picker(self, **kwargs: Any) -> None:
+        if self._current_bottom_app == BottomApp.WorkflowViewPicker:
+            return
+        await self._switch_from_input(WorkflowViewPickerApp(self._workflow_view_mode))
+
     async def _show_thinking(self, **kwargs: Any) -> None:
         """Switch to the thinking level picker in the bottom panel."""
         if self._current_bottom_app == BottomApp.ThinkingPicker:
@@ -3618,6 +3642,7 @@ class VibeApp(App):  # noqa: PLR0904
         focus_widget_by_app: dict[BottomApp, type[Widget]] = {
             BottomApp.Config: ConfigApp,
             BottomApp.ModelPicker: ModelPickerApp,
+            BottomApp.WorkflowViewPicker: WorkflowViewPickerApp,
             BottomApp.ThemePicker: ThemePickerApp,
             BottomApp.ThinkingPicker: ThinkingPickerApp,
             BottomApp.ProxySetup: ProxySetupApp,
@@ -4106,7 +4131,9 @@ class VibeApp(App):  # noqa: PLR0904
             self._workflow_screen.dismiss()
             return
 
-        screen = WorkflowMapScreen(self._workflow_projector.workflow)
+        screen = WorkflowMapScreen(
+            self._workflow_projector.workflow, view_mode=self._workflow_view_mode
+        )
         self._workflow_screen = screen
         self.push_screen(screen, self._workflow_map_closed)
 

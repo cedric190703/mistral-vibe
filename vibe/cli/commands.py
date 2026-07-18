@@ -53,6 +53,11 @@ class CommandRegistry:
                 description="Select active model",
                 handler="_show_model",
             ),
+            "workflow": Command(
+                aliases=frozenset(["/workflow"]),
+                description="Choose Workflow Map view",
+                handler="_show_workflow_picker",
+            ),
             "thinking": Command(
                 aliases=frozenset(["/thinking"]),
                 description="Select thinking level",

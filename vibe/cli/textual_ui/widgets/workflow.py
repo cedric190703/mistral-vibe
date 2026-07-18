@@ -99,11 +99,13 @@ class WorkflowMapScreen(Screen[None]):
         Binding("b", "show_both", "Both", show=False),
     ]
 
-    def __init__(self, workflow: Workflow) -> None:
+    def __init__(
+        self, workflow: Workflow, view_mode: WorkflowViewMode = WorkflowViewMode.BOTH
+    ) -> None:
         super().__init__(id="workflow-map")
         self.workflow = workflow
         self.selected_id = self._preferred_node_id()
-        self.view_mode = WorkflowViewMode.BOTH
+        self.view_mode = view_mode
 
     def compose(self) -> ComposeResult:
         yield NoMarkupStatic("WORKFLOW MAP", id="workflow-map-eyebrow")
