@@ -1723,6 +1723,7 @@ NarratorStatus {
 
 #modelpicker-app,
 #routingpicker-app,
+#skillspicker-app,
 #local_provider_picker-app {
     width: 100%;
     height: auto;
@@ -1759,7 +1760,8 @@ NarratorStatus {
 }
 
 #modelpicker-content,
-#routingpicker-content {
+#routingpicker-content,
+#skillspicker-content {
     width: 100%;
     height: auto;
 }
@@ -1791,7 +1793,8 @@ NarratorStatus {
 }
 
 #modelpicker-options,
-#routingpicker-options {
+#routingpicker-options,
+#skillspicker-options {
     width: 100%;
     max-height: 50vh;
     text-wrap: nowrap;
@@ -1800,12 +1803,14 @@ NarratorStatus {
 }
 
 #modelpicker-options:focus,
-#routingpicker-options:focus {
+#routingpicker-options:focus,
+#skillspicker-options:focus {
     border: none;
 }
 
 #modelpicker-options:focus > .option-list--option-highlighted,
 #routingpicker-options:focus > .option-list--option-highlighted,
+#skillspicker-options:focus > .option-list--option-highlighted,
 #local-provider-options:focus > .option-list--option-highlighted {
     color: $background;
     background: $mistral_orange;

@@ -8,6 +8,7 @@ import pytest
 from vibe.cli.textual_ui.skills_commands import (
     SkillsAction,
     build_skill_state_update,
+    build_skills_selection_update,
     format_skills_json,
     format_skills_status,
     format_skills_text,
@@ -206,3 +207,41 @@ def test_enable_with_whitelist_preserves_other_active_names() -> None:
 
     assert update.enabled_skills == ["one", "two"]
     assert update.disabled_skills == ["three"]
+
+
+def test_picker_selection_builds_mixed_enable_and_disable_update() -> None:
+    skills = {
+        "builtin": make_skill(
+            "builtin", source=SkillSource.BUILTIN, scope=SkillScope.BUILTIN
+        ),
+        "one": make_skill("one"),
+        "two": make_skill("two"),
+    }
+
+    update = build_skills_selection_update(
+        skills=skills,
+        enabled_names={"builtin", "one"},
+        selected_enabled_names={"builtin", "two"},
+        configured_enabled=[],
+    )
+
+    assert update.enabled_skills == []
+    assert update.disabled_skills == ["one"]
+    assert update.enabled_names == ("two",)
+    assert update.disabled_names == ("one",)
+
+
+def test_picker_selection_preserves_whitelist_mode() -> None:
+    skills = {"one": make_skill("one"), "two": make_skill("two")}
+
+    update = build_skills_selection_update(
+        skills=skills,
+        enabled_names={"one"},
+        selected_enabled_names={"one", "two"},
+        configured_enabled=["one"],
+    )
+
+    assert update.enabled_skills == ["one", "two"]
+    assert update.disabled_skills == []
+    assert update.enabled_names == ("two",)
+    assert update.disabled_names == ()

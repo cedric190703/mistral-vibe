@@ -75,6 +75,7 @@ from vibe.cli.textual_ui.skills_commands import (
     SkillsAction,
     SkillsCommandMessage,
     build_skill_state_update,
+    build_skills_selection_update,
     format_skills_json,
     format_skills_status,
     format_skills_text,
@@ -139,6 +140,7 @@ from vibe.cli.textual_ui.widgets.question_app import QuestionApp
 from vibe.cli.textual_ui.widgets.rewind_app import RewindApp
 from vibe.cli.textual_ui.widgets.routing_picker import RoutingPickerApp
 from vibe.cli.textual_ui.widgets.session_picker import SessionPickerApp
+from vibe.cli.textual_ui.widgets.skills_picker import SkillsPickerApp
 from vibe.cli.textual_ui.widgets.teleport_message import TeleportMessage
 from vibe.cli.textual_ui.widgets.theme_picker import ThemePickerApp, sorted_theme_names
 from vibe.cli.textual_ui.widgets.thinking_picker import ThinkingPickerApp
@@ -347,6 +349,7 @@ class BottomApp(StrEnum):
     ProxySetup = auto()
     Question = auto()
     RoutingPicker = auto()
+    SkillsPicker = auto()
     ThemePicker = auto()
     ThinkingPicker = auto()
     Rewind = auto()
@@ -1423,6 +1426,70 @@ class VibeApp(App):  # noqa: PLR0904
         self, _event: LocalProviderPickerApp.Cancelled
     ) -> None:
         await self._close_local_provider_picker()
+
+    async def on_skills_picker_app_applied(
+        self, message: SkillsPickerApp.Applied
+    ) -> None:
+        skills = self.agent_loop.skill_manager.discovered_skills
+        enabled_names = set(self.agent_loop.skill_manager.available_skills)
+        update = build_skills_selection_update(
+            skills=skills,
+            enabled_names=enabled_names,
+            selected_enabled_names=set(message.enabled_names),
+            configured_enabled=self.config.enabled_skills,
+        )
+        if not update.enabled_names and not update.disabled_names:
+            await self._switch_to_input_app()
+            await self._mount_and_scroll(
+                UserCommandMessage("Skill selection unchanged.")
+            )
+            return
+
+        failures = await self.agent_loop.config_orchestrator.set_field(
+            "/enabled_skills",
+            update.enabled_skills,
+            reason="Apply skill selection from /skills",
+            target_layer="project-toml",
+        )
+        failures.extend(
+            await self.agent_loop.config_orchestrator.set_field(
+                "/disabled_skills",
+                update.disabled_skills,
+                reason="Apply skill selection from /skills",
+                target_layer="project-toml",
+            )
+        )
+        if failures:
+            await self._mount_and_scroll(
+                ErrorMessage(
+                    f"Failed to update project skill configuration: {failures[0]}",
+                    collapsed=True,
+                )
+            )
+            return
+
+        if update.enabled_names:
+            self.agent_loop.telemetry_client.send_skill_configuration_changed(
+                action="enable", count=len(update.enabled_names)
+            )
+        if update.disabled_names:
+            self.agent_loop.telemetry_client.send_skill_configuration_changed(
+                action="disable", count=len(update.disabled_names)
+            )
+        changes = [
+            *(f"enabled {name}" for name in update.enabled_names),
+            *(f"disabled {name}" for name in update.disabled_names),
+        ]
+        await self._reload_config()
+        await self._switch_to_input_app()
+        await self._mount_and_scroll(
+            UserCommandMessage(f"Skills updated: {', '.join(changes)}.")
+        )
+
+    async def on_skills_picker_app_cancelled(
+        self, _event: SkillsPickerApp.Cancelled
+    ) -> None:
+        await self._switch_to_input_app()
 
     async def _close_local_provider_picker(self) -> None:
         await self._switch_to_input_app()
@@ -2982,6 +3049,16 @@ class VibeApp(App):  # noqa: PLR0904
             await self._mcp_login(result.name)
 
     async def _show_skills(self, cmd_args: str = "", **kwargs: Any) -> None:
+        if not cmd_args.strip():
+            if self._current_bottom_app == BottomApp.SkillsPicker:
+                return
+            await self._switch_from_input(
+                SkillsPickerApp(
+                    self.agent_loop.skill_manager.discovered_skills,
+                    set(self.agent_loop.skill_manager.available_skills),
+                )
+            )
+            return
         try:
             command = parse_skills_command(cmd_args)
         except ValueError as exc:
@@ -3865,6 +3942,7 @@ class VibeApp(App):  # noqa: PLR0904
             BottomApp.ModelPicker: ModelPickerApp,
             BottomApp.LocalProviderPicker: LocalProviderPickerApp,
             BottomApp.RoutingPicker: RoutingPickerApp,
+            BottomApp.SkillsPicker: SkillsPickerApp,
             BottomApp.ThemePicker: ThemePickerApp,
             BottomApp.ThinkingPicker: ThinkingPickerApp,
             BottomApp.ProxySetup: ProxySetupApp,
@@ -3946,6 +4024,13 @@ class VibeApp(App):  # noqa: PLR0904
         try:
             routing_picker = self.query_one(RoutingPickerApp)
             routing_picker.post_message(RoutingPickerApp.Cancelled())
+        except Exception:
+            pass
+        self._last_escape_time = None
+
+    def _handle_skills_picker_app_escape(self) -> None:
+        try:
+            self.query_one(SkillsPickerApp).action_cancel()
         except Exception:
             pass
         self._last_escape_time = None
@@ -4246,6 +4331,7 @@ class VibeApp(App):  # noqa: PLR0904
             BottomApp.ModelPicker: self._handle_model_picker_app_escape,
             BottomApp.LocalProviderPicker: self._handle_local_provider_picker_app_escape,
             BottomApp.RoutingPicker: self._handle_routing_picker_app_escape,
+            BottomApp.SkillsPicker: self._handle_skills_picker_app_escape,
             BottomApp.ThemePicker: self._handle_theme_picker_app_escape,
             BottomApp.ThinkingPicker: self._handle_thinking_picker_app_escape,
             BottomApp.VibeCodeProjectCreate: self._handle_vibe_code_project_create_app_escape,

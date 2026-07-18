@@ -157,7 +157,7 @@ class CommandRegistry:
             "skills": Command(
                 aliases=frozenset(["/skills"]),
                 description=(
-                    "List and manage discovered skills. Options: -v, --verbose, "
+                    "Select and manage discovered skills. Options: -v, --verbose, "
                     "--json; subcommands: enable, disable, toggle, status"
                 ),
                 handler="_show_skills",

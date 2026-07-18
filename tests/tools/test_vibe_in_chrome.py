@@ -217,7 +217,7 @@ async def test_screenshot_saves_file_and_emits_image_to_model(tmp_path) -> None:
         await collect_result(
             tool.run(VibeInChromeArgs(action="navigate", url=_FORM_PAGE), ctx)
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         msg = str(exc).lower()
         if "playwright install" in msg or "executable" in msg:
             pytest.skip(f"Chromium not installed: {exc}")

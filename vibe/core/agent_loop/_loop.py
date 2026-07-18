@@ -1593,9 +1593,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         )
         self._pending_injected_messages.append(msg)
 
-    def _inject_tool_image(
-        self, images: list[ImageAttachment], caption: str
-    ) -> None:
+    def _inject_tool_image(self, images: list[ImageAttachment], caption: str) -> None:
         """Queue images produced by a tool as an injected user message.
 
         The loop drains this before the next model turn (see

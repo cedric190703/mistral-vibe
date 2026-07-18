@@ -49,6 +49,14 @@ class SkillStateUpdate:
 
 
 @dataclass(frozen=True)
+class SkillsSelectionUpdate:
+    enabled_skills: list[str]
+    disabled_skills: list[str]
+    enabled_names: tuple[str, ...]
+    disabled_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class SkillDisplayLine:
     text: str
     disabled: bool = False
@@ -283,4 +291,30 @@ def build_skill_state_update(
         disabled_skills=next_disabled,
         changed_names=changed,
         target_enabled=target_enabled,
+    )
+
+
+def build_skills_selection_update(
+    *,
+    skills: Mapping[str, SkillInfo],
+    enabled_names: set[str],
+    selected_enabled_names: set[str],
+    configured_enabled: Sequence[str],
+) -> SkillsSelectionUpdate:
+    configurable_names = {
+        name for name, skill in skills.items() if skill.source != SkillSource.BUILTIN
+    }
+    desired_enabled = selected_enabled_names & configurable_names
+    current_enabled = enabled_names & configurable_names
+    newly_enabled = tuple(sorted(desired_enabled - current_enabled, key=str.casefold))
+    newly_disabled = tuple(sorted(current_enabled - desired_enabled, key=str.casefold))
+    next_enabled = (
+        sorted(desired_enabled, key=str.casefold) if configured_enabled else []
+    )
+    next_disabled = sorted(configurable_names - desired_enabled, key=str.casefold)
+    return SkillsSelectionUpdate(
+        enabled_skills=next_enabled,
+        disabled_skills=next_disabled,
+        enabled_names=newly_enabled,
+        disabled_names=newly_disabled,
     )

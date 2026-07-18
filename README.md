@@ -446,10 +446,15 @@ skill_paths = ["/path/to/custom/skills"]
 
 ### Managing Skills
 
-Use `/skills` in the interactive CLI to inspect every discovered skill, including disabled skills, and see whether it comes from the built-in, project, global, or registry context:
+Use `/skills` in the interactive CLI to open a Mistral-styled picker for every discovered skill. Navigate with the arrow keys or `j`/`k`, press `Space` to toggle project, global, or registry skills, and press `Enter` to apply and reload. Built-in skills stay checked because they are always available.
 
 ```text
 /skills
+```
+
+The inspection and scripting variants remain available:
+
+```text
 /skills --verbose
 /skills --json
 /skills status

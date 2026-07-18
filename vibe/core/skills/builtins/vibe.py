@@ -635,9 +635,10 @@ Custom agents are TOML files in `~/.vibe/agents/NAME.toml`.
 - `/compact` - Compact conversation history by summarizing
 - `/status` - Display agent statistics
 - `/voice` - Configure voice settings
-- `/skills` - List every discovered skill, including disabled skills, grouped by
-  built-in, project, global, and registry source. Use `-v`/`--verbose` for paths
-  and metadata, or `--json` for a flat machine-readable array.
+- `/skills` - Open the interactive skills picker. Use `Space` to toggle choices,
+  `Enter` to apply and reload, or `Esc` to cancel. Builtin skills are always checked.
+- `/skills -v` / `/skills --verbose` - List every discovered skill grouped by
+  source with paths and metadata. Use `--json` for a machine-readable array.
 - `/skills status` - List enabled and disabled skill names.
 - `/skills enable <name>...`, `/skills disable <name>...`, and `/skills toggle
   <name>` - Update project-level `.vibe/config.toml` after confirmation. Exact
@@ -780,10 +781,11 @@ prompt). The model can still load them via the `skill` tool.
 
 ### Inspecting and Managing Skills
 
-`/skills` lists every discovered skill, including disabled and model-only skills,
-with its built-in, project, global, or registry source. `/skills --verbose` adds
-path and metadata; `/skills --json` returns the full flat schema; `/skills status`
-splits names by enabled state.
+`/skills` opens an interactive picker containing every discovered skill, including
+disabled and model-only skills, with its built-in, project, global, or registry
+source. Press `Space` to toggle a choice and `Enter` to persist the selection and
+reload. `/skills --verbose` lists paths and metadata; `/skills --json` returns the
+full flat schema; `/skills status` splits names by enabled state.
 
 `/skills enable <name>...`, `/skills disable <name>...`, and `/skills toggle
 <name>` resolve exact names or case-insensitive glob patterns, confirm the diff,
