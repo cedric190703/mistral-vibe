@@ -8,8 +8,10 @@ from textual.widgets import OptionList
 
 from tests.conftest import build_test_vibe_app, build_test_vibe_config
 from vibe.cli.textual_ui.app import BottomApp
+from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 from vibe.cli.textual_ui.widgets.skills_picker import SkillsPickerApp
 from vibe.core.skills.models import SkillInfo, SkillScope, SkillSource
+from vibe.core.trusted_folders import trusted_folders_manager
 
 
 def _skill(
@@ -63,6 +65,24 @@ async def test_skills_without_arguments_opens_picker() -> None:
         assert app._current_bottom_app == BottomApp.SkillsPicker
         assert len(app.query(SkillsPickerApp)) == 1
         assert _checked_options(app.query_one(OptionList)) == [True, True, False]
+
+
+@pytest.mark.asyncio
+async def test_skills_picker_explains_hidden_project_skills(
+    tmp_working_directory,
+) -> None:
+    skills_dir = tmp_working_directory / ".agents" / "skills"
+    skills_dir.mkdir(parents=True)
+    trusted_folders_manager.add_untrusted(tmp_working_directory)
+    app = _app_with_skills()
+
+    async with app.run_test() as pilot:
+        await app._show_skills()
+        await pilot.pause()
+
+        warning = app.query_one("#skillspicker-trust-warning", NoMarkupStatic)
+        assert "PROJECT SKILLS HIDDEN" in str(warning.content)
+        assert "vibe --trust" in str(warning.content)
 
 
 @pytest.mark.asyncio

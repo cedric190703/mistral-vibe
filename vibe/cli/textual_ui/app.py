@@ -140,7 +140,10 @@ from vibe.cli.textual_ui.widgets.question_app import QuestionApp
 from vibe.cli.textual_ui.widgets.rewind_app import RewindApp
 from vibe.cli.textual_ui.widgets.routing_picker import RoutingPickerApp
 from vibe.cli.textual_ui.widgets.session_picker import SessionPickerApp
-from vibe.cli.textual_ui.widgets.skills_picker import SkillsPickerApp
+from vibe.cli.textual_ui.widgets.skills_picker import (
+    SkillsPickerApp,
+    project_skills_are_hidden,
+)
 from vibe.cli.textual_ui.widgets.teleport_message import TeleportMessage
 from vibe.cli.textual_ui.widgets.theme_picker import ThemePickerApp, sorted_theme_names
 from vibe.cli.textual_ui.widgets.thinking_picker import ThinkingPickerApp
@@ -3056,6 +3059,7 @@ class VibeApp(App):  # noqa: PLR0904
                 SkillsPickerApp(
                     self.agent_loop.skill_manager.discovered_skills,
                     set(self.agent_loop.skill_manager.available_skills),
+                    project_skills_hidden=project_skills_are_hidden(Path.cwd()),
                 )
             )
             return

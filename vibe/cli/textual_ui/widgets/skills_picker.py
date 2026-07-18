@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, ClassVar
 
 from rich.text import Text
@@ -15,7 +16,15 @@ from vibe.cli.textual_ui.shortcut_hints import shortcut, shortcut_hint
 from vibe.cli.textual_ui.skills_commands import skill_source_label
 from vibe.cli.textual_ui.widgets.navigable_option_list import NavigableOptionList
 from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
+from vibe.core.paths import find_local_config_dirs
 from vibe.core.skills.models import SkillInfo, SkillSource
+from vibe.core.trusted_folders import trusted_folders_manager
+
+
+def project_skills_are_hidden(workdir: Path) -> bool:
+    if trusted_folders_manager.is_trusted(workdir) is True:
+        return False
+    return bool(find_local_config_dirs(workdir).skills)
 
 
 class SkillsPickerApp(Container):
@@ -36,7 +45,12 @@ class SkillsPickerApp(Container):
         pass
 
     def __init__(
-        self, skills: Mapping[str, SkillInfo], enabled_names: set[str], **kwargs: Any
+        self,
+        skills: Mapping[str, SkillInfo],
+        enabled_names: set[str],
+        *,
+        project_skills_hidden: bool = False,
+        **kwargs: Any,
     ) -> None:
         super().__init__(id="skillspicker-app", **kwargs)
         source_order = {"Built-in": 0, "Project": 1, "Global": 2, "Registry": 3}
@@ -52,6 +66,7 @@ class SkillsPickerApp(Container):
         self._skill_names = list(self._skills)
         self._initial_enabled_names = frozenset(enabled_names)
         self._enabled_names = set(enabled_names)
+        self._project_skills_hidden = project_skills_hidden
 
     def compose(self) -> ComposeResult:
         enabled_count = sum(name in self._enabled_names for name in self._skill_names)
@@ -61,6 +76,13 @@ class SkillsPickerApp(Container):
                 "Choose which discovered skills are available in this project.",
                 classes="modelpicker-description",
             )
+            if self._project_skills_hidden:
+                yield NoMarkupStatic(
+                    "PROJECT SKILLS HIDDEN  This workspace is not trusted. "
+                    "Restart with `vibe --trust` to load .agents/skills and "
+                    ".vibe/skills.",
+                    id="skillspicker-trust-warning",
+                )
             yield NoMarkupStatic(
                 f"ACTIVE  {enabled_count} · INACTIVE  {len(self._skills) - enabled_count}",
                 classes="modelpicker-current",

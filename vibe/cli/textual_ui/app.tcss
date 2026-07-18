@@ -1792,6 +1792,15 @@ NarratorStatus {
     margin: 1 0;
 }
 
+#skillspicker-trust-warning {
+    width: 100%;
+    height: auto;
+    color: $mistral_orange;
+    border-left: heavy $mistral_orange;
+    padding-left: 1;
+    margin-top: 1;
+}
+
 #modelpicker-options,
 #routingpicker-options,
 #skillspicker-options {
