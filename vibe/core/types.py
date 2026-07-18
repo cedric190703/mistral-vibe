@@ -563,6 +563,12 @@ class SessionTitleUpdatedEvent(BaseEvent):
     title: str
 
 
+class ModelRoutingEvent(BaseEvent):
+    model_alias: str
+    reason: str
+    escalated: bool = False
+
+
 class OutputFormat(StrEnum):
     TEXT = auto()
     JSON = auto()
@@ -580,6 +586,10 @@ type UserInputCallback = Callable[[BaseModel], Awaitable[BaseModel]]
 type SwitchAgentCallback = Callable[[str], Awaitable[None]]
 
 type ClearContextCallback = Callable[[], Awaitable[None]]
+
+# A tool emits image attachments to be shown to the model on its next turn
+# (with a short caption). The host queues them as an injected user message.
+type EmitImageCallback = Callable[[list[ImageAttachment], str], None]
 
 
 class MessageList(Sequence[LLMMessage]):

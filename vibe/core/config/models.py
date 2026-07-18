@@ -348,6 +348,13 @@ class ModelConfig(BaseModel):
     _default_alias_to_name = model_validator(mode="before")(_default_alias_to_name)
 
 
+class RoutingConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    fast_model: str
+    capable_model: str
+
+
 def normalize_model_configs(value: Any) -> Any:
     """Read [[models]] lists or alias maps into the deep-mergeable internal map."""
     if isinstance(value, Mapping):

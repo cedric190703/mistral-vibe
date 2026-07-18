@@ -67,6 +67,7 @@ pip install mistral-vibe
   - [Trust Folder System](#trust-folder-system)
   - [Programmatic Mode](#programmatic-mode)
 - [Voice Mode](#voice-mode)
+- [Browser Automation](#browser-automation-vibe-in-chrome)
 - [Slash Commands](#slash-commands)
   - [Built-in Slash Commands](#built-in-slash-commands)
   - [Custom Slash Commands via Skills](#custom-slash-commands-via-skills)
@@ -99,6 +100,7 @@ pip install mistral-vibe
   - Manage a `todo` list to track the agent's work.
   - Ask interactive questions to gather user input (`ask_user_question`).
   - Delegate tasks to subagents for parallel work (`task`).
+  - Drive a real web browser for sites with no API (`vibe-in-chrome`, optional — install with `mistral-vibe[browser]`).
 - **Project-Aware Context**: Vibe automatically scans your project's file structure and Git status to provide relevant context to the agent, improving its understanding of your codebase.
 - **Advanced CLI Experience**: Built with modern libraries for a smooth and efficient workflow.
   - Autocompletion for slash commands (`/`) and file paths (`@`).
@@ -315,6 +317,58 @@ Toggle voice mode on or off with the `/voice` slash command:
 | `Escape` | Cancel recording |
 | `Ctrl+C` | Cancel recording |
 
+## Browser Automation (`vibe-in-chrome`)
+
+The optional `vibe-in-chrome` tool drives a real Chromium browser so the agent can
+close the loop on the web app you are building — open your local dev server, walk
+through a flow, submit a form, read console/network errors to reproduce a bug, and
+confirm a fix — without leaving the CLI. It also handles pages that have no API or
+connector (admin panels, dashboards).
+
+It runs in **text mode**: instead of screenshots, `snapshot` returns an indexed
+list of interactable elements (`[3] button "Sign in"`) and the agent acts on them
+by index (`click`, `type`). This works with any model, vision-capable or not, and
+it executes JavaScript, so it reads client-rendered SPAs that `web_fetch` cannot.
+The `console` action surfaces JS errors and failed requests for debugging;
+`pause` hands control back to you for a login, captcha, or 2FA step (the agent
+resumes from the re-read page once you confirm); and `screenshot` captures the
+page and shows it to vision-capable models (also saved to a file for you).
+
+### Install
+
+```bash
+uv tool install "mistral-vibe[browser]"   # or: pip install "mistral-vibe[browser]"
+playwright install chromium
+```
+
+The tool hides itself when Playwright is not installed.
+
+### Sessions
+
+By default each run uses a fresh, isolated browser. To use your own logins:
+
+```toml
+# ~/.vibe/config.toml — log in once, stay logged in across runs
+[tools.vibe-in-chrome]
+persist_session = true
+```
+
+Advanced: set `cdp_url = "http://127.0.0.1:9222"` to attach to a Chrome you started
+with `--remote-debugging-port=9222` (use `127.0.0.1`, not `localhost`). In that mode
+the tool leaves your browser running on exit.
+
+### Safety
+
+Page content is untrusted and enters the model's context, so treat the browser as a
+prompt-injection surface. Every mutating action (`navigate`, `click`, `type`)
+requires approval by default. Restrict where the agent may go with an allowlist —
+which is enforced even under `--auto-approve`:
+
+```toml
+[tools.vibe-in-chrome]
+allowed_domains = ["localhost", "127.0.0.1", "staging.example.com"]
+```
+
 ## Slash Commands
 
 Use slash commands for meta-actions and configuration changes during a session.
@@ -462,6 +516,23 @@ enable_system_trust_store = true
 ```
 
 `SSL_CERT_FILE` and `SSL_CERT_DIR` are still supported and are loaded as additional trust anchors.
+
+### Adaptive Model Routing
+
+Vibe automatically uses a configured local model for simple turns and
+`active_model` for complex turns. To override those automatic choices, configure
+aliases from your `[[models]]` entries:
+
+```toml
+[routing]
+fast_model = "local"
+capable_model = "mistral-medium-3.5"
+```
+
+If `[routing]` is absent, Vibe uses the automatic choices described above. Use
+`/routing` to switch between automatic routing and always using `active_model`
+for the current session. When the routed fast model cannot serve a request,
+Vibe tries the selected capable model without cycling through stale model entries.
 
 ### Custom System Prompts
 

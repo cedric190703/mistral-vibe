@@ -33,6 +33,7 @@ from vibe.core.types import (
     CompactEndEvent,
     CompactStartEvent,
     ContextClearedEvent,
+    ModelRoutingEvent,
     PlanReviewEndedEvent,
     PlanReviewRequestedEvent,
     ReasoningEvent,
@@ -56,11 +57,13 @@ class EventHandler:
         get_tools_collapsed: Callable[[], bool],
         on_profile_changed: Callable[[], None] | None = None,
         on_context_cleared: Callable[[Path | None], Awaitable[None]] | None = None,
+        on_model_routed: Callable[[ModelRoutingEvent], None] | None = None,
     ) -> None:
         self.mount_callback = mount_callback
         self.get_tools_collapsed = get_tools_collapsed
         self.on_profile_changed = on_profile_changed
         self.on_context_cleared = on_context_cleared
+        self.on_model_routed = on_model_routed
         self.tool_calls: dict[str, ToolCallMessage] = {}
         self.current_compact: CompactMessage | None = None
         self.current_streaming_message: AssistantMessage | None = None
@@ -165,6 +168,15 @@ class EventHandler:
             case CompactEndEvent():
                 await self.finalize_streaming()
                 await self._handle_compact_end(event)
+            case ModelRoutingEvent():
+                await self.finalize_streaming()
+                if self.on_model_routed:
+                    self.on_model_routed(event)
+                await self.mount_callback(
+                    NoMarkupStatic(
+                        self._routing_message(event), classes="model-routing-message"
+                    )
+                )
             case AgentProfileChangedEvent():
                 if self.on_profile_changed:
                     self.on_profile_changed()
@@ -188,6 +200,11 @@ class EventHandler:
                 await self.finalize_streaming()
                 await self._handle_unknown_event(event)
         return None
+
+    @staticmethod
+    def _routing_message(event: ModelRoutingEvent) -> str:
+        action = "Escalated to" if event.escalated else "Routed to"
+        return f"{action} {event.model_alias} — {event.reason}"
 
     def _sanitize_event(self, event: ToolResultEvent) -> ToolResultEvent:
         if isinstance(event, ToolResultEvent):

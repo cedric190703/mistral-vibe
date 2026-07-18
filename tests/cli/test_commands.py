@@ -9,6 +9,7 @@ class TestCommandRegistry:
         assert registry.get_command_name("/help") == "help"
         assert registry.get_command_name("/config") == "config"
         assert registry.get_command_name("/model") == "model"
+        assert registry.get_command_name("/routing") == "routing"
         assert registry.get_command_name("/connectors") == "mcp"
         assert registry.get_command_name("/clear") == "clear"
         assert registry.get_command_name("/exit") == "exit"

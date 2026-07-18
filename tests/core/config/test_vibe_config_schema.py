@@ -41,6 +41,10 @@ default_agent = "plan"
 enabled_skills = ["search"]
 enable_otel = true
 
+[routing]
+fast_model = "codestral"
+capable_model = "codestral"
+
 [[models]]
 alias = "codestral"
 name = "codestral-latest"
@@ -69,6 +73,9 @@ provider = "mistral"
     assert config.default_agent == "plan"
     assert "search" in config.enabled_skills
     assert config.enable_otel is True
+    assert config.routing is not None
+    assert config.routing.fast_model == "codestral"
+    assert config.routing.capable_model == "codestral"
 
 
 def test_duplicate_model_alias_last_wins() -> None:
@@ -114,6 +121,16 @@ def test_known_active_model_is_not_overridden(caplog: pytest.LogCaptureFixture) 
 def test_no_models_raises() -> None:
     with pytest.raises(ValueError, match="No models are configured"):
         VibeConfigSchema.model_validate({"models": []})
+
+
+def test_routing_models_must_be_configured() -> None:
+    with pytest.raises(ValueError, match="Routing model aliases are not configured"):
+        VibeConfigSchema.model_validate({
+            "models": [
+                ModelConfig(name="model-a", provider="mistral", alias="configured")
+            ],
+            "routing": {"fast_model": "missing", "capable_model": "configured"},
+        })
 
 
 def test_compaction_model_provider_must_match_active() -> None:

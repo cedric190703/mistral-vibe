@@ -110,6 +110,7 @@ from vibe.cli.textual_ui.widgets.loading import (
     LoadingWidget,
     paused_timer,
 )
+from vibe.cli.textual_ui.widgets.local_provider_picker import LocalProviderPickerApp
 from vibe.cli.textual_ui.widgets.messages import (
     VSCODE_EXTENSION_PROMO_WHATS_NEW_SUFFIX,
     AssistantMessage,
@@ -136,6 +137,7 @@ from vibe.cli.textual_ui.widgets.path_display import PathDisplay
 from vibe.cli.textual_ui.widgets.proxy_setup_app import ProxySetupApp
 from vibe.cli.textual_ui.widgets.question_app import QuestionApp
 from vibe.cli.textual_ui.widgets.rewind_app import RewindApp
+from vibe.cli.textual_ui.widgets.routing_picker import RoutingPickerApp
 from vibe.cli.textual_ui.widgets.session_picker import SessionPickerApp
 from vibe.cli.textual_ui.widgets.teleport_message import TeleportMessage
 from vibe.cli.textual_ui.widgets.theme_picker import ThemePickerApp, sorted_theme_names
@@ -194,8 +196,10 @@ from vibe.core.config import DEFAULT_THEME, AnyVibeConfig, ModelConfig
 from vibe.core.config.patch import escape_json_pointer_token
 from vibe.core.data_retention import DATA_RETENTION_MESSAGE
 from vibe.core.hooks.models import HookStartEvent
+from vibe.core.local_providers import LocalModel, discover_local_providers
 from vibe.core.log_reader import LogReader
 from vibe.core.logger import logger
+from vibe.core.model_routing import resolve_routing_config
 from vibe.core.paths import HISTORY_FILE
 from vibe.core.rewind import RewindError
 from vibe.core.sentry import capture_sentry_exception
@@ -253,6 +257,7 @@ from vibe.core.types import (
     ContextTooLongError,
     ImageAttachment,
     LLMMessage,
+    ModelRoutingEvent,
     RateLimitError,
     ReasoningEvent,
     RefusalError,
@@ -338,8 +343,10 @@ class BottomApp(StrEnum):
     MCP = auto()
     MCPOAuth = auto()
     ModelPicker = auto()
+    LocalProviderPicker = auto()
     ProxySetup = auto()
     Question = auto()
+    RoutingPicker = auto()
     ThemePicker = auto()
     ThinkingPicker = auto()
     Rewind = auto()
@@ -804,6 +811,7 @@ class VibeApp(App):  # noqa: PLR0904
             get_tools_collapsed=lambda: self._tools_collapsed,
             on_profile_changed=self._on_profile_changed,
             on_context_cleared=self._on_context_cleared,
+            on_model_routed=self._on_model_routed,
         )
 
         self._chat_input_container = self.query_one(ChatInputContainer)
@@ -1386,6 +1394,63 @@ class VibeApp(App):  # noqa: PLR0904
         self, _event: ModelPickerApp.Cancelled
     ) -> None:
         await self._switch_to_input_app()
+
+    async def on_routing_picker_app_routing_selected(
+        self, message: RoutingPickerApp.RoutingSelected
+    ) -> None:
+        self.agent_loop.set_adaptive_routing_enabled(message.enabled)
+        await self._switch_to_input_app()
+        self._refresh_banner()
+        mode = (
+            "Adaptive model routing enabled."
+            if message.enabled
+            else f"Using default model `{self.config.active_model}`."
+        )
+        await self._mount_and_scroll(UserCommandMessage(mode))
+
+    async def on_routing_picker_app_cancelled(
+        self, _event: RoutingPickerApp.Cancelled
+    ) -> None:
+        await self._switch_to_input_app()
+
+    async def on_local_provider_picker_app_model_selected(
+        self, message: LocalProviderPickerApp.ModelSelected
+    ) -> None:
+        await self._select_local_model(message.model)
+        await self._close_local_provider_picker()
+
+    async def on_local_provider_picker_app_cancelled(
+        self, _event: LocalProviderPickerApp.Cancelled
+    ) -> None:
+        await self._close_local_provider_picker()
+
+    async def _close_local_provider_picker(self) -> None:
+        await self._switch_to_input_app()
+        try:
+            await self.query_one(LocalProviderPickerApp).remove()
+        except Exception:
+            pass
+
+    async def _select_local_model(self, local_model: LocalModel) -> None:
+        provider_name = f"local-{local_model.provider.port}"
+        provider = {
+            "name": provider_name,
+            "api_base": local_model.provider.api_base,
+            "api_key_env_var": local_model.provider.api_key_env_var,
+            "api_style": "openai",
+            "backend": "generic",
+        }
+        providers = [item.model_dump() for item in self.config.providers]
+        providers = [item for item in providers if item["name"] != provider_name]
+        providers.append(provider)
+        alias = f"local-{local_model.provider.port}-{local_model.name}"
+        await self.agent_loop.config_orchestrator.set_field("/providers", providers)
+        await self.agent_loop.config_orchestrator.set_field(
+            f"/models/{escape_json_pointer_token(alias)}",
+            {"name": local_model.name, "provider": provider_name, "alias": alias},
+        )
+        await self.agent_loop.config_orchestrator.set_field("/active_model", alias)
+        await self._reload_config()
 
     async def on_vibe_code_project_picker_app_project_selected(
         self, message: VibeCodeProjectPickerApp.ProjectSelected
@@ -3136,6 +3201,26 @@ class VibeApp(App):  # noqa: PLR0904
             return
         await self._switch_to_model_picker_app()
 
+    async def _show_routing(self, **kwargs: Any) -> None:
+        if self._current_bottom_app == BottomApp.RoutingPicker:
+            return
+        await self._switch_to_routing_picker_app()
+
+    async def _show_local(self, **kwargs: Any) -> None:
+        if self._current_bottom_app == BottomApp.LocalProviderPicker:
+            return
+        await self._ensure_loading_widget("Discovering local models", show_hint=False)
+        discoveries = await discover_local_providers()
+        await self._remove_loading_widget()
+        if not any(discovery.models for discovery in discoveries):
+            await self._mount_and_scroll(
+                UserCommandMessage("No local OpenAI-compatible models found.")
+            )
+            return
+        await self._switch_from_input(
+            LocalProviderPickerApp(discoveries, current_model=self.config.active_model)
+        )
+
     async def _show_thinking(self, **kwargs: Any) -> None:
         """Switch to the thinking level picker in the bottom panel."""
         if self._current_bottom_app == BottomApp.ThinkingPicker:
@@ -3675,7 +3760,30 @@ class VibeApp(App):  # noqa: PLR0904
         model_aliases = list(self.config.models)
         current_model = str(self.config.active_model)
         await self._switch_from_input(
-            ModelPickerApp(model_aliases=model_aliases, current_model=current_model)
+            ModelPickerApp(
+                model_aliases=model_aliases,
+                current_model=current_model,
+                model_providers={
+                    alias: model.provider for alias, model in self.config.models.items()
+                },
+            )
+        )
+
+    async def _switch_to_routing_picker_app(self) -> None:
+        if self._current_bottom_app == BottomApp.RoutingPicker:
+            return
+        routing = resolve_routing_config(
+            self.config.routing,
+            self.config.models,
+            default_model=str(self.config.active_model),
+        )
+        await self._switch_from_input(
+            RoutingPickerApp(
+                enabled=self.agent_loop.adaptive_routing_enabled,
+                current_model=str(self.config.active_model),
+                fast_model=routing.fast_model,
+                capable_model=routing.capable_model,
+            )
         )
 
     async def _switch_to_thinking_picker_app(self) -> None:
@@ -3755,6 +3863,8 @@ class VibeApp(App):  # noqa: PLR0904
         focus_widget_by_app: dict[BottomApp, type[Widget]] = {
             BottomApp.Config: ConfigApp,
             BottomApp.ModelPicker: ModelPickerApp,
+            BottomApp.LocalProviderPicker: LocalProviderPickerApp,
+            BottomApp.RoutingPicker: RoutingPickerApp,
             BottomApp.ThemePicker: ThemePickerApp,
             BottomApp.ThinkingPicker: ThinkingPickerApp,
             BottomApp.ProxySetup: ProxySetupApp,
@@ -3793,6 +3903,13 @@ class VibeApp(App):  # noqa: PLR0904
             pass
         self._last_escape_time = None
 
+    def _handle_local_provider_picker_app_escape(self) -> None:
+        try:
+            self.query_one(LocalProviderPickerApp).action_cancel()
+        except Exception:
+            pass
+        self._last_escape_time = None
+
     def _handle_approval_app_escape(self) -> None:
         try:
             approval_app = self.query_one(ApprovalApp)
@@ -3821,6 +3938,14 @@ class VibeApp(App):  # noqa: PLR0904
         try:
             model_picker = self.query_one(ModelPickerApp)
             model_picker.post_message(ModelPickerApp.Cancelled())
+        except Exception:
+            pass
+        self._last_escape_time = None
+
+    def _handle_routing_picker_app_escape(self) -> None:
+        try:
+            routing_picker = self.query_one(RoutingPickerApp)
+            routing_picker.post_message(RoutingPickerApp.Cancelled())
         except Exception:
             pass
         self._last_escape_time = None
@@ -4119,6 +4244,8 @@ class VibeApp(App):  # noqa: PLR0904
             BottomApp.Approval: self._handle_approval_app_escape,
             BottomApp.Question: self._handle_question_app_escape,
             BottomApp.ModelPicker: self._handle_model_picker_app_escape,
+            BottomApp.LocalProviderPicker: self._handle_local_provider_picker_app_escape,
+            BottomApp.RoutingPicker: self._handle_routing_picker_app_escape,
             BottomApp.ThemePicker: self._handle_theme_picker_app_escape,
             BottomApp.ThinkingPicker: self._handle_thinking_picker_app_escape,
             BottomApp.VibeCodeProjectCreate: self._handle_vibe_code_project_create_app_escape,
@@ -4251,6 +4378,10 @@ class VibeApp(App):  # noqa: PLR0904
     def _on_profile_changed(self) -> None:
         self._refresh_profile_widgets()
         self._refresh_banner()
+
+    def _on_model_routed(self, event: ModelRoutingEvent) -> None:
+        if self._banner:
+            self._banner.set_routed_model(event.model_alias)
 
     def _refresh_banner(self) -> None:
         if self._banner:

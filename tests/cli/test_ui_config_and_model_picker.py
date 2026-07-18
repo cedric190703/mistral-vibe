@@ -3,13 +3,23 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from rich.text import Text
+from textual.widgets import OptionList
 
 from tests.conftest import build_test_vibe_app, build_test_vibe_config
 from vibe.cli.textual_ui.app import BottomApp
 from vibe.cli.textual_ui.widgets.config_app import ConfigApp
 from vibe.cli.textual_ui.widgets.model_picker import ModelPickerApp
+from vibe.cli.textual_ui.widgets.routing_picker import RoutingPickerApp
 from vibe.cli.textual_ui.widgets.thinking_picker import ThinkingPickerApp
-from vibe.core.config import THINKING_LEVELS, ModelConfig
+from vibe.core.config import THINKING_LEVELS, ModelConfig, RoutingConfig
+
+
+def _checked_options(option_list: OptionList) -> list[bool]:
+    return [
+        isinstance(option.prompt, Text) and option.prompt.plain.startswith("[✓]")
+        for option in option_list.options
+    ]
 
 
 def _make_config_with_models():
@@ -19,6 +29,12 @@ def _make_config_with_models():
         ModelConfig(name="model-c", provider="mistral", alias="gamma"),
     ]
     return build_test_vibe_config(models=models, active_model="alpha")
+
+
+def _make_config_with_routing():
+    config = _make_config_with_models()
+    config.routing = RoutingConfig(fast_model="alpha", capable_model="beta")
+    return config
 
 
 # --- /config command ---
@@ -101,6 +117,100 @@ async def test_config_escape_saves_changes() -> None:
 # --- /model command ---
 
 
+# --- /routing command ---
+
+
+@pytest.mark.asyncio
+async def test_routing_opens_picker() -> None:
+    app = build_test_vibe_app(config=_make_config_with_routing())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        assert app._current_bottom_app == BottomApp.RoutingPicker
+        assert len(app.query(RoutingPickerApp)) == 1
+
+
+@pytest.mark.asyncio
+async def test_routing_picker_selects_default_model_for_the_session() -> None:
+    app = build_test_vibe_app(config=_make_config_with_routing())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        await pilot.press("down", "space", "enter")
+        await pilot.pause(0.2)
+
+        assert not app.agent_loop.adaptive_routing_enabled
+        assert app._current_bottom_app == BottomApp.Input
+        assert len(app.query(RoutingPickerApp)) == 0
+
+
+@pytest.mark.asyncio
+async def test_routing_picker_requires_space_before_applying() -> None:
+    app = build_test_vibe_app(config=_make_config_with_routing())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        await pilot.press("down", "enter")
+        await pilot.pause(0.2)
+
+        picker = app.query_one(RoutingPickerApp)
+        assert picker._selected_enabled is None
+        assert app.agent_loop.adaptive_routing_enabled
+        assert app._current_bottom_app == BottomApp.RoutingPicker
+
+
+@pytest.mark.asyncio
+async def test_routing_picker_moves_the_only_check_to_the_marked_mode() -> None:
+    app = build_test_vibe_app(config=_make_config_with_routing())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        option_list = app.query_one("#routingpicker-options", OptionList)
+        assert _checked_options(option_list) == [True, False]
+
+        await pilot.press("down", "space")
+        await pilot.pause(0.2)
+
+        option_list = app.query_one("#routingpicker-options", OptionList)
+        assert _checked_options(option_list) == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_routing_picker_escape_keeps_the_current_session_choice() -> None:
+    app = build_test_vibe_app(config=_make_config_with_routing())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+
+        assert app.agent_loop.adaptive_routing_enabled
+        assert app._current_bottom_app == BottomApp.Input
+        assert len(app.query(RoutingPickerApp)) == 0
+
+
+@pytest.mark.asyncio
+async def test_routing_without_config_uses_automatic_defaults() -> None:
+    app = build_test_vibe_app(config=_make_config_with_models())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        assert app._current_bottom_app == BottomApp.RoutingPicker
+        assert len(app.query(RoutingPickerApp)) == 1
+
+
 @pytest.mark.asyncio
 async def test_model_opens_model_picker() -> None:
     app = build_test_vibe_app(config=_make_config_with_models())
@@ -160,6 +270,44 @@ async def test_model_picker_escape_does_not_save() -> None:
 
 
 @pytest.mark.asyncio
+async def test_model_picker_requires_space_before_applying() -> None:
+    app = build_test_vibe_app(config=_make_config_with_models())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_model()
+        await pilot.pause(0.2)
+
+        orchestrator = app.agent_loop.config_orchestrator
+        with patch.object(
+            orchestrator, "set_field", new=AsyncMock(return_value=[])
+        ) as mock_set_field:
+            await pilot.press("down", "enter")
+            await pilot.pause(0.2)
+
+            mock_set_field.assert_not_awaited()
+
+        assert app._current_bottom_app == BottomApp.ModelPicker
+
+
+@pytest.mark.asyncio
+async def test_model_picker_moves_the_only_check_to_the_marked_choice() -> None:
+    app = build_test_vibe_app(config=_make_config_with_models())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_model()
+        await pilot.pause(0.2)
+
+        option_list = app.query_one("#modelpicker-options", OptionList)
+        assert _checked_options(option_list) == [True, False, False]
+
+        await pilot.press("down", "space")
+        await pilot.pause(0.2)
+
+        option_list = app.query_one("#modelpicker-options", OptionList)
+        assert _checked_options(option_list) == [False, True, False]
+
+
+@pytest.mark.asyncio
 async def test_model_picker_select_model() -> None:
     app = build_test_vibe_app(config=_make_config_with_models())
     async with app.run_test() as pilot:
@@ -167,8 +315,8 @@ async def test_model_picker_select_model() -> None:
         await app._show_model()
         await pilot.pause(0.2)
 
-        # Navigate down to "beta" and select
-        await pilot.press("down")
+        # Navigate down to "beta", mark it, and apply
+        await pilot.press("down", "space")
         orchestrator = app.agent_loop.config_orchestrator
         with patch.object(
             orchestrator, "set_field", new=AsyncMock(return_value=[])
@@ -195,7 +343,7 @@ async def test_model_picker_select_current_model() -> None:
         with patch.object(
             orchestrator, "set_field", new=AsyncMock(return_value=[])
         ) as mock_set_field:
-            await pilot.press("enter")
+            await pilot.press("space", "enter")
             await pilot.pause(0.2)
 
             mock_set_field.assert_awaited_once_with("/active_model", "alpha")
@@ -260,7 +408,7 @@ async def test_config_to_model_picker_select_returns_to_input() -> None:
         await pilot.pause(0.3)
 
         # Select second model
-        await pilot.press("down")
+        await pilot.press("down", "space")
         orchestrator = app.agent_loop.config_orchestrator
         with patch.object(
             orchestrator, "set_field", new=AsyncMock(return_value=[])

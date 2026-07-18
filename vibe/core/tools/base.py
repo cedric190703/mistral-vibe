@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from vibe.core.types import (
         ApprovalCallback,
         ClearContextCallback,
+        EmitImageCallback,
         SwitchAgentCallback,
         UserInputCallback,
     )
@@ -68,6 +69,7 @@ class InvokeContext:
     hook_config_result: HookConfigResult | None = field(default=None)
     session_id: str | None = field(default=None)
     mcp_pool: MCPConnectionPool | None = field(default=None)
+    emit_image_callback: EmitImageCallback | None = field(default=None)
 
 
 class ToolError(Exception):
