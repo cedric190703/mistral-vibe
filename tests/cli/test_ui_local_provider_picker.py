@@ -7,7 +7,7 @@ import pytest
 from tests.conftest import build_test_vibe_app
 from vibe.cli.textual_ui.app import BottomApp
 from vibe.cli.textual_ui.widgets.local_provider_picker import LocalProviderPickerApp
-from vibe.core.local_providers import LocalModel, LocalProvider
+from vibe.core.local_providers import LocalModel, LocalProvider, LocalProviderDiscovery
 
 
 @pytest.mark.asyncio
@@ -17,8 +17,10 @@ async def test_local_opens_picker_with_discovered_models() -> None:
 
     async with app.run_test() as pilot:
         with patch(
-            "vibe.cli.textual_ui.app.discover_local_models",
-            new=AsyncMock(return_value=models),
+            "vibe.cli.textual_ui.app.discover_local_providers",
+            new=AsyncMock(
+                return_value=[LocalProviderDiscovery(models[0].provider, models)]
+            ),
         ):
             await app._show_local()
         await pilot.pause()
@@ -40,7 +42,12 @@ async def test_local_picker_selection_persists_provider_model_and_active_model()
             with patch.object(
                 orchestrator, "set_field", new=AsyncMock(return_value=[])
             ) as set_field:
-                await app._switch_from_input(LocalProviderPickerApp([local_model]))
+                await app._switch_from_input(
+                    LocalProviderPickerApp(
+                        [LocalProviderDiscovery(local_model.provider, [local_model])],
+                        current_model="alpha",
+                    )
+                )
                 await pilot.press("enter")
                 await pilot.pause()
 
@@ -58,7 +65,12 @@ async def test_local_picker_escape_returns_to_input() -> None:
     local_model = LocalModel(LocalProvider("Ollama", 11434), "qwen3")
 
     async with app.run_test() as pilot:
-        await app._switch_from_input(LocalProviderPickerApp([local_model]))
+        await app._switch_from_input(
+            LocalProviderPickerApp(
+                [LocalProviderDiscovery(local_model.provider, [local_model])],
+                current_model="alpha",
+            )
+        )
         await pilot.press("escape")
         await pilot.pause()
 

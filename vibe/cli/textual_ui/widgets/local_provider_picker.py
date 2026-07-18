@@ -13,7 +13,7 @@ from textual.widgets.option_list import Option
 from vibe.cli.textual_ui.shortcut_hints import shortcut, shortcut_hint
 from vibe.cli.textual_ui.widgets.navigable_option_list import NavigableOptionList
 from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
-from vibe.core.local_providers import LocalModel
+from vibe.core.local_providers import LocalModel, LocalProviderDiscovery
 
 
 class LocalProviderPickerApp(Container):
@@ -31,13 +31,21 @@ class LocalProviderPickerApp(Container):
     class Cancelled(Message):
         pass
 
-    def __init__(self, models: list[LocalModel], **kwargs: Any) -> None:
+    def __init__(
+        self,
+        discoveries: list[LocalProviderDiscovery],
+        current_model: str,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(id="local-provider-picker", **kwargs)
-        self._models = models
+        self._discoveries = discoveries
+        self._models = [model for item in discoveries for model in item.models]
+        self._current_model = current_model
 
     def compose(self) -> ComposeResult:
         with Vertical(id="local-provider-picker-content"):
-            yield NoMarkupStatic("Local Models", classes="modelpicker-title")
+            yield NoMarkupStatic("Local Providers", classes="modelpicker-title")
+            yield NoMarkupStatic(self._provider_status(), id="local-provider-status")
             yield NavigableOptionList(
                 *(
                     Option(self._option(model), id=str(index))
@@ -52,11 +60,18 @@ class LocalProviderPickerApp(Container):
                 classes="modelpicker-help",
             )
 
-    @staticmethod
-    def _option(model: LocalModel) -> Text:
+    def _option(self, model: LocalModel) -> Text:
+        marker = "✓" if model.name in self._current_model else "○"
         return Text(
-            f"● {model.provider.name} ({model.provider.port})  {model.name}",
+            f"{marker} {model.provider.name} ({model.provider.port})  {model.name}",
             no_wrap=True,
+        )
+
+    def _provider_status(self) -> str:
+        return "\n".join(
+            f"{'●' if item.models else '○'} {item.provider.name} ({item.provider.port}) — "
+            f"{len(item.models)} model{'s' if len(item.models) != 1 else ''}"
+            for item in self._discoveries
         )
 
     def on_mount(self) -> None:

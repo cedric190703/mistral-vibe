@@ -184,7 +184,7 @@ from vibe.core.config import DEFAULT_THEME, AnyVibeConfig, ModelConfig
 from vibe.core.config.patch import escape_json_pointer_token
 from vibe.core.data_retention import DATA_RETENTION_MESSAGE
 from vibe.core.hooks.models import HookStartEvent
-from vibe.core.local_providers import LocalModel, discover_local_models
+from vibe.core.local_providers import LocalModel, discover_local_providers
 from vibe.core.log_reader import LogReader
 from vibe.core.logger import logger
 from vibe.core.paths import HISTORY_FILE
@@ -3019,14 +3019,16 @@ class VibeApp(App):  # noqa: PLR0904
         if self._current_bottom_app == BottomApp.LocalProviderPicker:
             return
         await self._ensure_loading_widget("Discovering local models", show_hint=False)
-        models = await discover_local_models()
+        discoveries = await discover_local_providers()
         await self._remove_loading_widget()
-        if not models:
+        if not any(discovery.models for discovery in discoveries):
             await self._mount_and_scroll(
                 UserCommandMessage("No local OpenAI-compatible models found.")
             )
             return
-        await self._switch_from_input(LocalProviderPickerApp(models))
+        await self._switch_from_input(
+            LocalProviderPickerApp(discoveries, current_model=self.config.active_model)
+        )
 
     async def _show_thinking(self, **kwargs: Any) -> None:
         """Switch to the thinking level picker in the bottom panel."""
