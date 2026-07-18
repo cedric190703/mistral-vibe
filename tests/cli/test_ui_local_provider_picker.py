@@ -48,6 +48,7 @@ async def test_local_picker_selection_persists_provider_model_and_active_model()
                         current_model="alpha",
                     )
                 )
+                await pilot.press("space")
                 await pilot.press("enter")
                 await pilot.pause()
 
@@ -92,6 +93,9 @@ async def test_local_picker_space_selects_the_highlighted_model() -> None:
                 )
             )
             await pilot.press("space")
+            await pilot.pause()
+            select.assert_not_awaited()
+            await pilot.press("enter")
             await pilot.pause()
 
         select.assert_awaited_once_with(local_model)

@@ -42,6 +42,7 @@ class LocalProviderPickerApp(Container):
         self._discoveries = discoveries
         self._models = [model for item in discoveries for model in item.models]
         self._current_model = current_model
+        self._selected_index: int | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="local-provider-picker-content"):
@@ -56,21 +57,21 @@ class LocalProviderPickerApp(Container):
             )
             yield NoMarkupStatic(
                 shortcut_hint(
-                    f"{shortcut('↑↓/jk')} Navigate  {shortcut('Space/Enter')} Select  {shortcut('Esc')} Cancel"
+                    f"{shortcut('↑↓/jk')} Navigate  {shortcut('Space')} Mark  {shortcut('Enter')} Apply  {shortcut('Esc')} Cancel"
                 ),
                 classes="modelpicker-help",
             )
 
     def _option(self, model: LocalModel) -> Text:
-        marker = (
-            "✓"
-            if self._current_model == f"local-{model.provider.port}-{model.name}"
-            else "○"
-        )
-        return Text(
-            f"{marker} {model.provider.name} ({model.provider.port})  {model.name}",
-            no_wrap=True,
-        )
+        text = Text(no_wrap=True)
+        if self._selected_index == self._models.index(model):
+            text.append("✓ ", style="bold #FF8205")
+        elif self._current_model == f"local-{model.provider.port}-{model.name}":
+            text.append("● ", style="bold")
+        else:
+            text.append("○ ")
+        text.append(f"{model.provider.name} ({model.provider.port})  {model.name}")
+        return text
 
     def _provider_status(self) -> str:
         return "\n".join(
@@ -82,16 +83,31 @@ class LocalProviderPickerApp(Container):
     def on_mount(self) -> None:
         self.query_one(OptionList).focus()
 
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+    async def on_option_list_option_selected(
+        self, event: OptionList.OptionSelected
+    ) -> None:
         if event.option.id is None:
             return
-        self.post_message(self.ModelSelected(self._models[int(event.option.id)]))
+        index = int(event.option.id)
+        if self._selected_index != index:
+            self._selected_index = index
+            await self._refresh_options(index)
+            return
+        self.post_message(self.ModelSelected(self._models[index]))
 
-    def action_select_highlighted(self) -> None:
+    async def action_select_highlighted(self) -> None:
         option_list = self.query_one(OptionList)
         if option_list.highlighted is None:
             return
-        self.post_message(self.ModelSelected(self._models[option_list.highlighted]))
+        index = option_list.highlighted
+        self._selected_index = None if self._selected_index == index else index
+        await self._refresh_options(index)
+
+    async def _refresh_options(self, highlighted: int) -> None:
+        await self.recompose()
+        option_list = self.query_one(OptionList)
+        option_list.highlighted = highlighted
+        option_list.focus()
 
     def action_cancel(self) -> None:
         self.post_message(self.Cancelled())

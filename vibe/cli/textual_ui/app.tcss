@@ -1695,6 +1695,8 @@ NarratorStatus {
     height: auto;
     width: 100%;
     background: transparent;
+    border: solid $mistral_orange;
+    padding: 0 1;
 }
 
 #local-provider-picker-content {
@@ -1705,6 +1707,20 @@ NarratorStatus {
 #local-provider-options {
     height: auto;
     max-height: 12;
+    border: none;
+}
+
+#local-provider-options:focus {
+    border: none;
+}
+
+#local-provider-status {
+    color: $text-muted;
+    margin-bottom: 1;
+
+    &:ansi {
+        text-style: dim;
+    }
 }
 
 #modelpicker-content {
