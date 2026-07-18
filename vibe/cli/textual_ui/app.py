@@ -126,6 +126,7 @@ from vibe.cli.textual_ui.widgets.path_display import PathDisplay
 from vibe.cli.textual_ui.widgets.proxy_setup_app import ProxySetupApp
 from vibe.cli.textual_ui.widgets.question_app import QuestionApp
 from vibe.cli.textual_ui.widgets.rewind_app import RewindApp
+from vibe.cli.textual_ui.widgets.routing_picker import RoutingPickerApp
 from vibe.cli.textual_ui.widgets.session_picker import SessionPickerApp
 from vibe.cli.textual_ui.widgets.teleport_message import TeleportMessage
 from vibe.cli.textual_ui.widgets.theme_picker import ThemePickerApp, sorted_theme_names
@@ -332,6 +333,7 @@ class BottomApp(StrEnum):
     LocalProviderPicker = auto()
     ProxySetup = auto()
     Question = auto()
+    RoutingPicker = auto()
     ThemePicker = auto()
     ThinkingPicker = auto()
     Rewind = auto()
@@ -1377,6 +1379,23 @@ class VibeApp(App):  # noqa: PLR0904
 
     async def on_model_picker_app_cancelled(
         self, _event: ModelPickerApp.Cancelled
+    ) -> None:
+        await self._switch_to_input_app()
+
+    async def on_routing_picker_app_routing_selected(
+        self, message: RoutingPickerApp.RoutingSelected
+    ) -> None:
+        self.agent_loop.set_adaptive_routing_enabled(message.enabled)
+        await self._switch_to_input_app()
+        mode = (
+            "Adaptive model routing enabled."
+            if message.enabled
+            else f"Using default model `{self.config.active_model}`."
+        )
+        await self._mount_and_scroll(UserCommandMessage(mode))
+
+    async def on_routing_picker_app_cancelled(
+        self, _event: RoutingPickerApp.Cancelled
     ) -> None:
         await self._switch_to_input_app()
 
@@ -3024,6 +3043,19 @@ class VibeApp(App):  # noqa: PLR0904
             return
         await self._switch_to_model_picker_app()
 
+    async def _show_routing(self, **kwargs: Any) -> None:
+        if self._current_bottom_app == BottomApp.RoutingPicker:
+            return
+        if self.config.routing is None:
+            await self._mount_and_scroll(
+                UserCommandMessage(
+                    "Adaptive routing is unavailable. Add `fast_model` and "
+                    "`capable_model` under `[routing]` in config.toml."
+                )
+            )
+            return
+        await self._switch_to_routing_picker_app()
+
     async def _show_local(self, **kwargs: Any) -> None:
         if self._current_bottom_app == BottomApp.LocalProviderPicker:
             return
@@ -3581,6 +3613,13 @@ class VibeApp(App):  # noqa: PLR0904
             ModelPickerApp(model_aliases=model_aliases, current_model=current_model)
         )
 
+    async def _switch_to_routing_picker_app(self) -> None:
+        if self._current_bottom_app == BottomApp.RoutingPicker:
+            return
+        await self._switch_from_input(
+            RoutingPickerApp(enabled=self.agent_loop.adaptive_routing_enabled)
+        )
+
     async def _switch_to_thinking_picker_app(self) -> None:
         if self._current_bottom_app == BottomApp.ThinkingPicker:
             return
@@ -3659,6 +3698,7 @@ class VibeApp(App):  # noqa: PLR0904
             BottomApp.Config: ConfigApp,
             BottomApp.ModelPicker: ModelPickerApp,
             BottomApp.LocalProviderPicker: LocalProviderPickerApp,
+            BottomApp.RoutingPicker: RoutingPickerApp,
             BottomApp.ThemePicker: ThemePickerApp,
             BottomApp.ThinkingPicker: ThinkingPickerApp,
             BottomApp.ProxySetup: ProxySetupApp,
@@ -3732,6 +3772,14 @@ class VibeApp(App):  # noqa: PLR0904
         try:
             model_picker = self.query_one(ModelPickerApp)
             model_picker.post_message(ModelPickerApp.Cancelled())
+        except Exception:
+            pass
+        self._last_escape_time = None
+
+    def _handle_routing_picker_app_escape(self) -> None:
+        try:
+            routing_picker = self.query_one(RoutingPickerApp)
+            routing_picker.post_message(RoutingPickerApp.Cancelled())
         except Exception:
             pass
         self._last_escape_time = None
@@ -4031,6 +4079,7 @@ class VibeApp(App):  # noqa: PLR0904
             BottomApp.Question: self._handle_question_app_escape,
             BottomApp.ModelPicker: self._handle_model_picker_app_escape,
             BottomApp.LocalProviderPicker: self._handle_local_provider_picker_app_escape,
+            BottomApp.RoutingPicker: self._handle_routing_picker_app_escape,
             BottomApp.ThemePicker: self._handle_theme_picker_app_escape,
             BottomApp.ThinkingPicker: self._handle_thinking_picker_app_escape,
             BottomApp.VibeCodeProjectCreate: self._handle_vibe_code_project_create_app_escape,

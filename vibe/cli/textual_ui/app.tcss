@@ -1696,7 +1696,8 @@ NarratorStatus {
     scrollbar-size: 1 1;
 }
 
-#modelpicker-app {
+#modelpicker-app,
+#routingpicker-app {
     width: 100%;
     height: auto;
     background: transparent;
@@ -1737,7 +1738,8 @@ NarratorStatus {
     }
 }
 
-#modelpicker-content {
+#modelpicker-content,
+#routingpicker-content {
     width: 100%;
     height: auto;
 }
@@ -1748,7 +1750,8 @@ NarratorStatus {
     color: $primary;
 }
 
-#modelpicker-options {
+#modelpicker-options,
+#routingpicker-options {
     width: 100%;
     max-height: 50vh;
     text-wrap: nowrap;
@@ -1756,7 +1759,8 @@ NarratorStatus {
     border: none;
 }
 
-#modelpicker-options:focus {
+#modelpicker-options:focus,
+#routingpicker-options:focus {
     border: none;
 }
 

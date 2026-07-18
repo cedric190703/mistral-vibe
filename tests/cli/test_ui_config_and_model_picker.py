@@ -8,8 +8,9 @@ from tests.conftest import build_test_vibe_app, build_test_vibe_config
 from vibe.cli.textual_ui.app import BottomApp
 from vibe.cli.textual_ui.widgets.config_app import ConfigApp
 from vibe.cli.textual_ui.widgets.model_picker import ModelPickerApp
+from vibe.cli.textual_ui.widgets.routing_picker import RoutingPickerApp
 from vibe.cli.textual_ui.widgets.thinking_picker import ThinkingPickerApp
-from vibe.core.config import THINKING_LEVELS, ModelConfig
+from vibe.core.config import THINKING_LEVELS, ModelConfig, RoutingConfig
 
 
 def _make_config_with_models():
@@ -19,6 +20,12 @@ def _make_config_with_models():
         ModelConfig(name="model-c", provider="mistral", alias="gamma"),
     ]
     return build_test_vibe_config(models=models, active_model="alpha")
+
+
+def _make_config_with_routing():
+    config = _make_config_with_models()
+    config.routing = RoutingConfig(fast_model="alpha", capable_model="beta")
+    return config
 
 
 # --- /config command ---
@@ -99,6 +106,65 @@ async def test_config_escape_saves_changes() -> None:
 
 
 # --- /model command ---
+
+
+# --- /routing command ---
+
+
+@pytest.mark.asyncio
+async def test_routing_opens_picker() -> None:
+    app = build_test_vibe_app(config=_make_config_with_routing())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        assert app._current_bottom_app == BottomApp.RoutingPicker
+        assert len(app.query(RoutingPickerApp)) == 1
+
+
+@pytest.mark.asyncio
+async def test_routing_picker_selects_default_model_for_the_session() -> None:
+    app = build_test_vibe_app(config=_make_config_with_routing())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        await pilot.press("down", "enter")
+        await pilot.pause(0.2)
+
+        assert not app.agent_loop.adaptive_routing_enabled
+        assert app._current_bottom_app == BottomApp.Input
+        assert len(app.query(RoutingPickerApp)) == 0
+
+
+@pytest.mark.asyncio
+async def test_routing_picker_escape_keeps_the_current_session_choice() -> None:
+    app = build_test_vibe_app(config=_make_config_with_routing())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+
+        assert app.agent_loop.adaptive_routing_enabled
+        assert app._current_bottom_app == BottomApp.Input
+        assert len(app.query(RoutingPickerApp)) == 0
+
+
+@pytest.mark.asyncio
+async def test_routing_without_config_explains_how_to_enable_it() -> None:
+    app = build_test_vibe_app(config=_make_config_with_models())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        assert app._current_bottom_app == BottomApp.Input
+        assert len(app.query(RoutingPickerApp)) == 0
 
 
 @pytest.mark.asyncio

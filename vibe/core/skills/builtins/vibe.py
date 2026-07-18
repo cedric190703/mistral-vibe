@@ -620,6 +620,7 @@ Custom agents are TOML files in `~/.vibe/agents/NAME.toml`.
 - `/help` - Show help message
 - `/config` - Edit config settings
 - `/model` - Select active model
+- `/routing` - Choose adaptive routing or always use the default model
 - `/thinking` - Select thinking level
 - `/theme` - Select Textual UI theme (persisted in config)
 - `/reload` - Reload configuration, agent instructions, and skills from disk
