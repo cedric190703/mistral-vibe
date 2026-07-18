@@ -188,6 +188,7 @@ from vibe.core.hooks.models import HookStartEvent
 from vibe.core.local_providers import LocalModel, discover_local_providers
 from vibe.core.log_reader import LogReader
 from vibe.core.logger import logger
+from vibe.core.model_routing import resolve_routing_config
 from vibe.core.paths import HISTORY_FILE
 from vibe.core.rewind import RewindError
 from vibe.core.sentry import capture_sentry_exception
@@ -3603,14 +3604,30 @@ class VibeApp(App):  # noqa: PLR0904
         model_aliases = list(self.config.models)
         current_model = str(self.config.active_model)
         await self._switch_from_input(
-            ModelPickerApp(model_aliases=model_aliases, current_model=current_model)
+            ModelPickerApp(
+                model_aliases=model_aliases,
+                current_model=current_model,
+                model_providers={
+                    alias: model.provider for alias, model in self.config.models.items()
+                },
+            )
         )
 
     async def _switch_to_routing_picker_app(self) -> None:
         if self._current_bottom_app == BottomApp.RoutingPicker:
             return
+        routing = resolve_routing_config(
+            self.config.routing,
+            self.config.models,
+            default_model=str(self.config.active_model),
+        )
         await self._switch_from_input(
-            RoutingPickerApp(enabled=self.agent_loop.adaptive_routing_enabled)
+            RoutingPickerApp(
+                enabled=self.agent_loop.adaptive_routing_enabled,
+                current_model=str(self.config.active_model),
+                fast_model=routing.fast_model,
+                capable_model=routing.capable_model,
+            )
         )
 
     async def _switch_to_thinking_picker_app(self) -> None:

@@ -243,6 +243,26 @@ async def test_model_picker_escape_does_not_save() -> None:
 
 
 @pytest.mark.asyncio
+async def test_model_picker_requires_space_before_applying() -> None:
+    app = build_test_vibe_app(config=_make_config_with_models())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_model()
+        await pilot.pause(0.2)
+
+        orchestrator = app.agent_loop.config_orchestrator
+        with patch.object(
+            orchestrator, "set_field", new=AsyncMock(return_value=[])
+        ) as mock_set_field:
+            await pilot.press("down", "enter")
+            await pilot.pause(0.2)
+
+            mock_set_field.assert_not_awaited()
+
+        assert app._current_bottom_app == BottomApp.ModelPicker
+
+
+@pytest.mark.asyncio
 async def test_model_picker_select_model() -> None:
     app = build_test_vibe_app(config=_make_config_with_models())
     async with app.run_test() as pilot:
@@ -250,8 +270,8 @@ async def test_model_picker_select_model() -> None:
         await app._show_model()
         await pilot.pause(0.2)
 
-        # Navigate down to "beta" and select
-        await pilot.press("down")
+        # Navigate down to "beta", mark it, and apply
+        await pilot.press("down", "space")
         orchestrator = app.agent_loop.config_orchestrator
         with patch.object(
             orchestrator, "set_field", new=AsyncMock(return_value=[])
@@ -278,7 +298,7 @@ async def test_model_picker_select_current_model() -> None:
         with patch.object(
             orchestrator, "set_field", new=AsyncMock(return_value=[])
         ) as mock_set_field:
-            await pilot.press("enter")
+            await pilot.press("space", "enter")
             await pilot.pause(0.2)
 
             mock_set_field.assert_awaited_once_with("/active_model", "alpha")
@@ -343,7 +363,7 @@ async def test_config_to_model_picker_select_returns_to_input() -> None:
         await pilot.pause(0.3)
 
         # Select second model
-        await pilot.press("down")
+        await pilot.press("down", "space")
         orchestrator = app.agent_loop.config_orchestrator
         with patch.object(
             orchestrator, "set_field", new=AsyncMock(return_value=[])

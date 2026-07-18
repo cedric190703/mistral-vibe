@@ -1697,21 +1697,14 @@ NarratorStatus {
 }
 
 #modelpicker-app,
-#routingpicker-app {
-    width: 100%;
-    height: auto;
-    background: transparent;
-    border: solid $foreground-muted;
-    padding: 0 1;
-    margin: 0;
-}
-
+#routingpicker-app,
 #local_provider_picker-app {
-    height: auto;
     width: 100%;
+    height: auto;
     background: transparent;
     border: solid $mistral_orange;
-    padding: 0 1;
+    padding: 1 2;
+    margin: 0;
 }
 
 #local-provider-picker-content {
@@ -1732,6 +1725,8 @@ NarratorStatus {
 #local-provider-status {
     color: $text-muted;
     margin-bottom: 1;
+    border-left: heavy $mistral_orange;
+    padding-left: 1;
 
     &:ansi {
         text-style: dim;
@@ -1747,7 +1742,27 @@ NarratorStatus {
 .modelpicker-title {
     height: auto;
     text-style: bold;
-    color: $primary;
+    color: $mistral_orange;
+}
+
+.modelpicker-description {
+    width: 100%;
+    height: auto;
+    color: $text-muted;
+
+    &:ansi {
+        text-style: dim;
+    }
+}
+
+.modelpicker-current {
+    width: 100%;
+    height: auto;
+    color: $foreground;
+    text-style: bold;
+    border-left: heavy $mistral_orange;
+    padding-left: 1;
+    margin: 1 0;
 }
 
 #modelpicker-options,
@@ -1762,6 +1777,14 @@ NarratorStatus {
 #modelpicker-options:focus,
 #routingpicker-options:focus {
     border: none;
+}
+
+#modelpicker-options:focus > .option-list--option-highlighted,
+#routingpicker-options:focus > .option-list--option-highlighted,
+#local-provider-options:focus > .option-list--option-highlighted {
+    color: $background;
+    background: $mistral_orange;
+    text-style: bold;
 }
 
 .modelpicker-help {

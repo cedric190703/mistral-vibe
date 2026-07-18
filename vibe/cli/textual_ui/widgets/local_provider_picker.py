@@ -46,11 +46,18 @@ class LocalProviderPickerApp(Container):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="local-provider-picker-content"):
-            yield NoMarkupStatic("Local Providers", classes="modelpicker-title")
+            yield NoMarkupStatic("LOCAL MODEL DISCOVERY", classes="modelpicker-title")
+            yield NoMarkupStatic(
+                "Choose a model served by Ollama, LM Studio, Jan, or another local provider.",
+                classes="modelpicker-description",
+            )
+            yield NoMarkupStatic(
+                f"CURRENT  {self._current_model}", classes="modelpicker-current"
+            )
             yield NoMarkupStatic(self._provider_status(), id="local-provider-status")
             yield NavigableOptionList(
                 *(
-                    Option(self._option(model), id=str(index))
+                    Option(self._option(index, model), id=str(index))
                     for index, model in enumerate(self._models)
                 ),
                 id="local-provider-options",
@@ -62,28 +69,32 @@ class LocalProviderPickerApp(Container):
                 classes="modelpicker-help",
             )
 
-    def _option(self, model: LocalModel) -> Text:
+    def _option(self, index: int, model: LocalModel) -> Text:
         text = Text(no_wrap=True)
-        if self._selected_index == self._models.index(model):
-            text.append("✓ ", style="bold #FF8205")
-        elif self._current_model == f"local-{model.provider.port}-{model.name}":
-            text.append("● ", style="bold")
-        else:
-            text.append("○ ")
-        text.append(f"{model.provider.name} ({model.provider.port})  {model.name}")
+        is_selected = self._selected_index == index
+        is_current = self._current_model == f"local-{model.provider.port}-{model.name}"
+        marker = "[✓]" if is_selected else "[•]" if is_current else "[ ]"
+        text.append(f"{marker} ", style="bold #FF8205" if is_selected else "bold")
+        text.append(model.name, style="bold" if is_selected or is_current else "")
+        text.append(
+            f"  {model.provider.name.upper()} :{model.provider.port}", style="dim"
+        )
+        if is_current:
+            text.append("  CURRENT", style="bold #FF8205")
         return text
 
     def _provider_status(self) -> str:
-        return "\n".join(
-            f"{'●' if item.models else '○'} {item.provider.name} ({item.provider.port}) — "
-            f"{len(item.models)} model{'s' if len(item.models) != 1 else ''}"
-            + (
-                f" · set {item.provider.api_key_env_var}"
-                if not item.models and item.provider.api_key_env_var
-                else ""
-            )
-            for item in self._discoveries
+        online = [item for item in self._discoveries if item.models]
+        model_count = sum(len(item.models) for item in online)
+        providers = " · ".join(
+            f"{item.provider.name} :{item.provider.port} ({len(item.models)})"
+            for item in online
         )
+        offline_count = len(self._discoveries) - len(online)
+        headline = (
+            f"{len(online)} online · {offline_count} offline · {model_count} models"
+        )
+        return f"{headline}\nDETECTED  {providers}" if providers else headline
 
     def on_mount(self) -> None:
         self.query_one(OptionList).focus()

@@ -39,6 +39,35 @@ class ModelRoutingDecision:
     escalated: bool = False
 
 
+def resolve_routing_config(
+    routing: RoutingConfig | None,
+    models: Mapping[str, ModelConfig],
+    *,
+    default_model: str,
+) -> RoutingConfig:
+    if routing is not None:
+        return routing
+    fast_model = next(
+        (
+            alias
+            for alias, model in models.items()
+            if model.provider.startswith("local-")
+        ),
+        default_model,
+    )
+    capable_model = default_model
+    if capable_model == fast_model:
+        capable_model = next(
+            (
+                alias
+                for alias, model in models.items()
+                if alias != fast_model and not model.provider.startswith("local-")
+            ),
+            next((alias for alias in models if alias != fast_model), default_model),
+        )
+    return RoutingConfig(fast_model=fast_model, capable_model=capable_model)
+
+
 class AdaptiveModelRouter:
     def __init__(
         self,
@@ -48,7 +77,9 @@ class AdaptiveModelRouter:
         default_model: str,
     ) -> None:
         self._models = models
-        self._routing = routing or self._default_routing(default_model)
+        self._routing = resolve_routing_config(
+            routing, models, default_model=default_model
+        )
         self._current_model: ModelConfig | None = None
         self._candidate_aliases: list[str] = []
         self._candidate_index = -1
@@ -136,30 +167,6 @@ class AdaptiveModelRouter:
         preferred = [preferred_model]
         routing_models = [self._routing.capable_model, self._routing.fast_model]
         return list(dict.fromkeys([*preferred, *routing_models]))
-
-    def _default_routing(self, default_model: str) -> RoutingConfig:
-        fast_model = next(
-            (
-                alias
-                for alias, model in self._models.items()
-                if model.provider.startswith("local-")
-            ),
-            default_model,
-        )
-        capable_model = default_model
-        if capable_model == fast_model:
-            capable_model = next(
-                (
-                    alias
-                    for alias, model in self._models.items()
-                    if alias != fast_model and not model.provider.startswith("local-")
-                ),
-                next(
-                    (alias for alias in self._models if alias != fast_model),
-                    default_model,
-                ),
-            )
-        return RoutingConfig(fast_model=fast_model, capable_model=capable_model)
 
     @staticmethod
     def _complexity(prompt: str, *, has_images: bool) -> int:
