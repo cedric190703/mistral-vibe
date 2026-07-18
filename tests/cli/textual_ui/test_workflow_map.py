@@ -39,3 +39,24 @@ async def test_workflow_rail_and_map_update_while_chat_remains_mounted() -> None
         await pilot.pause()
         assert isinstance(app.screen, WorkflowMapScreen)
         assert "Workflow" in str(app.screen.query_one("#workflow-map-title").render())
+
+
+@pytest.mark.asyncio
+async def test_workflow_map_switches_between_graph_text_and_both_views() -> None:
+    app = build_test_vibe_app()
+    app._workflow_projector.start_turn("Fix authentication")
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+w", "t")
+        await pilot.pause()
+        assert isinstance(app.screen, WorkflowMapScreen)
+        assert app.screen.query_one("#workflow-text-view")
+
+        await pilot.press("g")
+        await pilot.pause()
+        assert app.screen.query_one("#workflow-map-body")
+        assert not app.screen.query("#workflow-detail")
+
+        await pilot.press("b")
+        await pilot.pause()
+        assert app.screen.query_one("#workflow-detail")

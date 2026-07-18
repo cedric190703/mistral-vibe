@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum, auto
 from time import monotonic
 from typing import ClassVar
 
@@ -20,6 +21,12 @@ _SYMBOLS = {
     WorkflowNodeState.FAILED: "✕",
     WorkflowNodeState.CANCELLED: "■",
 }
+
+
+class WorkflowViewMode(StrEnum):
+    GRAPH = auto()
+    TEXT = auto()
+    BOTH = auto()
 
 
 def _elapsed(node: WorkflowNode) -> str:
@@ -87,26 +94,37 @@ class WorkflowMapScreen(Screen[None]):
         Binding("up", "select_previous", "Previous", show=False),
         Binding("down", "select_next", "Next", show=False),
         Binding("enter", "select_next", "Next", show=False),
+        Binding("g", "show_graph", "Graph", show=False),
+        Binding("t", "show_text", "Text", show=False),
+        Binding("b", "show_both", "Both", show=False),
     ]
 
     def __init__(self, workflow: Workflow) -> None:
         super().__init__(id="workflow-map")
         self.workflow = workflow
         self.selected_id = self._preferred_node_id()
+        self.view_mode = WorkflowViewMode.BOTH
 
     def compose(self) -> ComposeResult:
         yield NoMarkupStatic("WORKFLOW MAP", id="workflow-map-eyebrow")
         yield NoMarkupStatic(self.workflow.title, id="workflow-map-title")
         yield NoMarkupStatic(self._header_status(), id="workflow-map-status")
-        with Horizontal(id="workflow-map-body"):
-            with VerticalScroll(id="workflow-nodes"):
-                for node, depth in self._workflow_nodes():
-                    yield WorkflowNodeRow(
-                        node, depth=depth, selected=node.id == self.selected_id
-                    )
-            yield NoMarkupStatic(self._detail(), id="workflow-detail")
+        match self.view_mode:
+            case WorkflowViewMode.TEXT:
+                with VerticalScroll(id="workflow-map-body"):
+                    yield NoMarkupStatic(self._text_view(), id="workflow-text-view")
+            case WorkflowViewMode.GRAPH:
+                with VerticalScroll(
+                    id="workflow-map-body", classes="workflow-graph-only"
+                ):
+                    yield from self._node_rows()
+            case WorkflowViewMode.BOTH:
+                with Horizontal(id="workflow-map-body"):
+                    with VerticalScroll(id="workflow-nodes"):
+                        yield from self._node_rows()
+                    yield NoMarkupStatic(self._detail(), id="workflow-detail")
         yield NoMarkupStatic(
-            "↑↓ navigate · Enter next · Esc / Ctrl+W return to chat",
+            "G graph · T text · B both · ↑↓ navigate · Esc / Ctrl+W return",
             id="workflow-map-help",
         )
 
@@ -142,6 +160,27 @@ class WorkflowMapScreen(Screen[None]):
                 nodes.append((child, 1))
                 nodes.extend((grandchild, 2) for grandchild in child.children)
         return nodes
+
+    def _node_rows(self) -> list[WorkflowNodeRow]:
+        return [
+            WorkflowNodeRow(node, depth=depth, selected=node.id == self.selected_id)
+            for node, depth in self._workflow_nodes()
+        ]
+
+    def _text_view(self) -> str:
+        lines: list[str] = []
+        for node, depth in self._workflow_nodes():
+            prefix = "  " * depth
+            lines.append(f"{prefix}{_SYMBOLS[node.state]} {node.title}")
+            if depth:
+                lines.append(f"{prefix}  {node.summary}")
+            if node.input_preview:
+                lines.append(f"{prefix}  Input: {node.input_preview}")
+            if node.output_preview:
+                label = "Error" if node.state == WorkflowNodeState.FAILED else "Result"
+                lines.append(f"{prefix}  {label}: {node.output_preview}")
+            lines.extend(f"{prefix}  File: {path}" for path in node.affected_files)
+        return "\n".join(lines)
 
     def _detail(self) -> str:
         node = next(
@@ -179,6 +218,21 @@ class WorkflowMapScreen(Screen[None]):
 
     async def action_select_next(self) -> None:
         await self._move_selection(1)
+
+    async def action_show_graph(self) -> None:
+        await self._set_view_mode(WorkflowViewMode.GRAPH)
+
+    async def action_show_text(self) -> None:
+        await self._set_view_mode(WorkflowViewMode.TEXT)
+
+    async def action_show_both(self) -> None:
+        await self._set_view_mode(WorkflowViewMode.BOTH)
+
+    async def _set_view_mode(self, view_mode: WorkflowViewMode) -> None:
+        if self.view_mode == view_mode:
+            return
+        self.view_mode = view_mode
+        await self.recompose()
 
     async def _move_selection(self, offset: int) -> None:
         ids = [node.id for node, _ in self._workflow_nodes()]
