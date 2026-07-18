@@ -357,6 +357,29 @@ async def test_pause_continue_then_abort() -> None:
 
 
 @pytest.mark.asyncio
+async def test_snapshot_reports_disabled_elements() -> None:
+    """Disabled controls stay in the snapshot, flagged, instead of vanishing."""
+    tool = _make_browser()
+    page = "data:text/html,<button>Go</button><button disabled>Locked</button>"
+    try:
+        result = await collect_result(
+            tool.run(VibeInChromeArgs(action="navigate", url=page))
+        )
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "playwright install" in msg or "executable" in msg:
+            pytest.skip(f"Chromium not installed: {exc}")
+        raise
+    try:
+        locked = next(e for e in result.elements if "Locked" in e.name)
+        go = next(e for e in result.elements if "Go" in e.name)
+        assert locked.disabled is True
+        assert go.disabled is False
+    finally:
+        await collect_result(tool.run(VibeInChromeArgs(action="close")))
+
+
+@pytest.mark.asyncio
 async def test_type_requires_text() -> None:
     tool = _make_browser()
     await _open_or_skip(tool)

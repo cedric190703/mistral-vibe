@@ -27,6 +27,7 @@ Actions:
 
 Rules:
 - `ref` values are only valid against the most recent elements list. After any action the DOM may change, so always use refs from the latest result; if a `ref` is missing, take a `snapshot` and retry.
+- An element marked `disabled` is present but not currently actionable (e.g. a locked button waiting on a precondition). Don't try to `click` it — work out what enables it first (fill a field, meet a requirement), then re-`snapshot`.
 - The browser and its login/session state persist across calls within a session — you do not need to re-navigate or re-authenticate between steps.
 - If a page looks empty or incomplete, it may still be loading or require interaction: `scroll` to load more, then `snapshot` again before concluding the content is unavailable. Do not claim the tool "cannot run JavaScript" — it can.
 - Opening a login, sign-in, or authentication page is legitimate: you never type credentials yourself — the human does, via `pause`. When you reach a login form, a captcha, or a 2FA challenge, do not refuse and do not guess: call `pause` with a short `message` so the human can authenticate in the browser, then continue from the re-read page. Navigating to third-party sites the user asked for is expected; refuse only if the user's own `allowed_domains` config disallows the domain (the tool enforces that automatically).

@@ -141,7 +141,6 @@ _SNAPSHOT_JS = r"""
     '[contenteditable=""]', '[contenteditable=true]',
   ].join(',');
   const isVisible = (el) => {
-    if (el.disabled) return false;
     const rects = el.getClientRects();
     if (!rects.length) return false;
     const style = window.getComputedStyle(el);
@@ -163,7 +162,7 @@ _SNAPSHOT_JS = r"""
     el.setAttribute('data-vibe-ref', String(i));
     const tag = el.tagName.toLowerCase();
     const type = el.getAttribute('type') || el.getAttribute('role') || '';
-    out.push({ ref: i, tag, type, name: name(el) });
+    out.push({ ref: i, tag, type, name: name(el), disabled: !!el.disabled });
     i += 1;
   }
   return out;
@@ -231,6 +230,7 @@ class VibeInChromeElement(BaseModel):
     tag: str
     type: str = ""
     name: str = ""
+    disabled: bool = False
 
 
 class VibeInChromeTab(BaseModel):
@@ -683,6 +683,7 @@ class VibeInChrome(
                 tag=str(e.get("tag", "")),
                 type=str(e.get("type", "")),
                 name=str(e.get("name", "")),
+                disabled=bool(e.get("disabled", False)),
             )
             for e in (data.get("elements") or [])
         ]
@@ -971,6 +972,7 @@ class VibeInChrome(
                 tag=str(item.get("tag", "")),
                 type=str(item.get("type", "")),
                 name=str(item.get("name", "")),
+                disabled=bool(item.get("disabled", False)),
             )
             for item in raw[: self.config.max_elements]
         ]

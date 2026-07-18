@@ -208,7 +208,6 @@ function snapshotPage(maxElements, maxTextChars) {
     '[contenteditable=""]', "[contenteditable=true]",
   ].join(",");
   const visible = (el) => {
-    if (el.disabled) return false;
     if (!el.getClientRects().length) return false;
     const s = getComputedStyle(el);
     return s.visibility !== "hidden" && s.display !== "none";
@@ -233,6 +232,7 @@ function snapshotPage(maxElements, maxTextChars) {
       tag: el.tagName.toLowerCase(),
       type: el.getAttribute("type") || el.getAttribute("role") || "",
       name: name(el),
+      disabled: !!el.disabled,
     });
     if (++i >= maxElements) break;
   }
