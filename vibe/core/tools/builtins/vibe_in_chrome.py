@@ -67,6 +67,9 @@ VibeInChromeAction = Literal[
     "scroll",
     "back",
     "forward",
+    "list_tabs",
+    "open_tab",
+    "switch_tab",
     "console",
     "screenshot",
     "pause",
@@ -86,6 +89,8 @@ _READ_ONLY_ACTIONS: frozenset[str] = frozenset({
     "console",
     "screenshot",
     "pause",
+    "list_tabs",
+    "switch_tab",
 })
 
 # Actions that may trigger navigation or client-side rendering; wait for the
@@ -98,7 +103,28 @@ _SETTLE_ACTIONS: frozenset[str] = frozenset({
     "back",
     "forward",
     "pause",
+    "open_tab",
+    "switch_tab",
 })
+
+# Actions the Chrome extension backend can perform on the user's real browser.
+# Others (console, screenshot) stay on the Playwright backend for now.
+_EXTENSION_ACTIONS: frozenset[str] = frozenset({
+    "navigate",
+    "snapshot",
+    "click",
+    "type",
+    "scroll",
+    "back",
+    "forward",
+    "list_tabs",
+    "open_tab",
+    "switch_tab",
+    "screenshot",
+})
+
+# Browser-wide tab management (distinct from acting on the current page).
+_TAB_ACTIONS: frozenset[str] = frozenset({"list_tabs", "open_tab", "switch_tab"})
 
 # JS that tags every visible, interactable element with a stable ``data-vibe-ref``
 # attribute and returns a compact description the model can act on.
@@ -190,6 +216,10 @@ class VibeInChromeArgs(BaseModel):
         default=False,
         description="For `screenshot`: capture the full scrollable page, not just the viewport.",
     )
+    tab_id: int | None = Field(
+        default=None,
+        description="For `switch_tab`: the id of the tab to activate (from `list_tabs`).",
+    )
 
 
 class VibeInChromeElement(BaseModel):
@@ -199,6 +229,13 @@ class VibeInChromeElement(BaseModel):
     name: str = ""
 
 
+class VibeInChromeTab(BaseModel):
+    id: int
+    title: str = ""
+    url: str = ""
+    active: bool = False
+
+
 class VibeInChromeResult(BaseModel):
     action: VibeInChromeAction
     url: str = ""
@@ -206,6 +243,7 @@ class VibeInChromeResult(BaseModel):
     elements: list[VibeInChromeElement] = Field(default_factory=list)
     text: str = ""
     console: list[str] = Field(default_factory=list)
+    tabs: list[VibeInChromeTab] = Field(default_factory=list)
     screenshot_path: str = ""
     message: str = ""
 
@@ -213,6 +251,25 @@ class VibeInChromeResult(BaseModel):
 class VibeInChromeConfig(BaseToolConfig):
     permission: ToolPermission = ToolPermission.ASK
 
+    prefer_extension: bool = Field(
+        default=True,
+        description=(
+            "Try to control the user's own Chrome through the Vibe-in-Chrome "
+            "extension first, and fall back to launching a Playwright browser "
+            "when no extension is connected."
+        ),
+    )
+    extension_port: int = Field(
+        default=9223,
+        description="Local port the extension connects to (must match the extension).",
+    )
+    extension_connect_grace: float = Field(
+        default=2.5,
+        description=(
+            "Seconds to wait for the extension to connect the first time before "
+            "falling back to Playwright."
+        ),
+    )
     persist_session: bool = Field(
         default=False,
         description=(
@@ -403,6 +460,35 @@ class _VibeInChromeManager:
             raise ToolError("No page is open. Use action='navigate' first.")
         return self._page
 
+    async def open_tab(self, url: str, config: VibeInChromeConfig) -> Any:
+        page = await self._context.new_page()
+        page.set_default_timeout(config.nav_timeout_ms)
+        self._attach_console_listeners(page)
+        self._page = page
+        await page.goto(url, wait_until="domcontentloaded")
+        return page
+
+    async def switch_tab(self, tab_id: int) -> Any:
+        pages = self._context.pages if self._context else []
+        if tab_id < 0 or tab_id >= len(pages):
+            raise ToolError(f"No tab with id {tab_id}. Use `list_tabs` first.")
+        self._page = pages[tab_id]
+        await self._page.bring_to_front()
+        return self._page
+
+    async def list_tabs(self) -> list[VibeInChromeTab]:
+        pages = self._context.pages if self._context else []
+        tabs: list[VibeInChromeTab] = []
+        for i, p in enumerate(pages):
+            try:
+                title = await p.title()
+            except Exception:
+                title = ""
+            tabs.append(
+                VibeInChromeTab(id=i, title=title, url=p.url, active=p is self._page)
+            )
+        return tabs
+
     async def close(self) -> None:
         # When attached to the user's own Chrome, leave the browser and its tabs
         # running — only detach the local driver.
@@ -518,11 +604,144 @@ class VibeInChrome(
         known_schemes = ("http://", "https://", "file://", "about:", "data:")
         return raw if raw.startswith(known_schemes) else "https://" + raw
 
+    def _build_extension_payload(self, args: VibeInChromeArgs) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "action": args.action,
+            "maxElements": self.config.max_elements,
+            "maxTextChars": self.config.max_text_chars,
+        }
+        if args.action in {"navigate", "open_tab"}:
+            if not args.url:
+                raise ToolError(f"`{args.action}` requires `url`.")
+            target = self._normalize_url(args.url)
+            if not self._domain_allowed(urlparse(target).netloc):
+                raise ToolError(
+                    f"Navigation to '{target}' is blocked by allowed_domains "
+                    f"({', '.join(self.config.allowed_domains)})."
+                )
+            payload["url"] = target
+        elif args.action in {"click", "type"}:
+            if args.ref is None:
+                raise ToolError(f"`{args.action}` requires `ref` from a snapshot.")
+            payload["ref"] = args.ref
+            if args.action == "type":
+                if args.text is None:
+                    raise ToolError("`type` requires `text`.")
+                payload["text"] = args.text
+                payload["submit"] = args.submit
+        elif args.action == "scroll":
+            payload["amount"] = args.amount
+        elif args.action == "switch_tab":
+            if args.tab_id is None:
+                raise ToolError("`switch_tab` requires `tab_id` (from `list_tabs`).")
+            payload["tab_id"] = args.tab_id
+        return payload
+
+    async def _try_extension(
+        self, args: VibeInChromeArgs, ctx: InvokeContext | None
+    ) -> VibeInChromeResult | None:
+        """Run an action against the user's Chrome via the extension.
+
+        Returns None when no extension is connected, so the caller falls back to
+        the Playwright backend.
+        """
+        from vibe.core.tools.builtins.vibe_in_chrome_bridge import bridge
+
+        br = bridge()
+        await br.ensure_started(
+            self.config.extension_port, grace=self.config.extension_connect_grace
+        )
+        if not br.is_connected():
+            return None
+
+        payload = self._build_extension_payload(args)
+
+        timeout = max(self.config.nav_timeout_ms, self.config.settle_ms) / 1000 + 5
+        try:
+            resp = await br.send(payload, timeout=timeout)
+        except (ConnectionError, TimeoutError) as exc:
+            raise ToolError(f"Extension command failed: {exc}") from exc
+        if not resp.get("ok"):
+            raise ToolError(resp.get("error") or "Extension returned an error.")
+
+        data = resp.get("result") or {}
+        elements = [
+            VibeInChromeElement(
+                ref=int(e["ref"]),
+                tag=str(e.get("tag", "")),
+                type=str(e.get("type", "")),
+                name=str(e.get("name", "")),
+            )
+            for e in (data.get("elements") or [])
+        ]
+        tabs = [
+            VibeInChromeTab(
+                id=int(t["id"]),
+                title=str(t.get("title", "")),
+                url=str(t.get("url", "")),
+                active=bool(t.get("active", False)),
+            )
+            for t in (data.get("tabs") or [])
+        ]
+        text = str(data.get("text", ""))
+        if len(text) > self.config.max_text_chars:
+            text = text[: self.config.max_text_chars] + "\n[…text truncated]"
+        result = VibeInChromeResult(
+            action=args.action,
+            url=str(data.get("url", "")),
+            title=str(data.get("title", "")),
+            elements=elements,
+            tabs=tabs,
+            text=text,
+        )
+        if args.action == "screenshot":
+            data_url = str(data.get("screenshot_data") or "")
+            if data_url:
+                result.screenshot_path = self._save_screenshot_data(data_url, args, ctx)
+        return result
+
+    def _save_screenshot_data(
+        self, data_url: str, args: VibeInChromeArgs, ctx: InvokeContext | None
+    ) -> str:
+        """Save a base64 PNG from the extension and show it to a vision model."""
+        import base64
+
+        b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
+        raw = base64.b64decode(b64)
+        if args.path:
+            dest = Path(args.path).expanduser()
+        else:
+            base = ctx.scratchpad_dir if ctx and ctx.scratchpad_dir else Path.cwd()
+            name = f"vibe-in-chrome-{ctx.tool_call_id if ctx else 'shot'}.png"
+            dest = Path(base) / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(raw)
+        if ctx is not None and ctx.emit_image_callback is not None:
+            try:
+                from vibe.core.session.image_snapshot import snapshot_image_bytes
+
+                attachment = snapshot_image_bytes(
+                    raw,
+                    alias=dest.name,
+                    mime_type="image/png",
+                    session_dir=ctx.session_dir,
+                )
+                ctx.emit_image_callback(
+                    [attachment],
+                    f"Screenshot captured by vibe-in-chrome ({dest.name}):",
+                )
+            except Exception:
+                pass
+        return str(dest)
+
     async def run(
         self, args: VibeInChromeArgs, ctx: InvokeContext | None = None
     ) -> AsyncGenerator[ToolStreamEvent | VibeInChromeResult, None]:
         if args.action == "close":
             await _manager().close()
+            from vibe.core.tools.builtins.vibe_in_chrome_bridge import close_bridge
+
+            await close_bridge()
             yield VibeInChromeResult(action="close", message="VibeInChrome closed.")
             return
 
@@ -533,8 +752,21 @@ class VibeInChrome(
                 "with a visible browser, to hand off logins or captchas."
             )
 
-        page = await _manager().ensure_page(self.config)
-        await self._perform(page, args, ctx)
+        # Prefer the user's own Chrome via the extension when one is connected;
+        # otherwise fall through to a Playwright-launched browser.
+        if self.config.prefer_extension and args.action in _EXTENSION_ACTIONS:
+            extension_result = await self._try_extension(args, ctx)
+            if extension_result is not None:
+                yield extension_result
+                return
+
+        await _manager().ensure_page(self.config)
+        if args.action in _TAB_ACTIONS:
+            await self._perform_tab(args)
+        else:
+            await self._perform(_manager().page, args, ctx)
+        # open_tab / switch_tab change the active page, so re-read it here.
+        page = _manager().page
 
         if args.action in _SETTLE_ACTIONS:
             await self._settle(page)
@@ -546,7 +778,27 @@ class VibeInChrome(
             )
         elif args.action == "screenshot":
             result.screenshot_path = await self._capture(page, args, ctx)
+        elif args.action in _TAB_ACTIONS:
+            result.tabs = await _manager().list_tabs()
         yield result
+
+    async def _perform_tab(self, args: VibeInChromeArgs) -> None:
+        """Browser-wide tab management on the Playwright backend."""
+        if args.action == "open_tab":
+            if not args.url:
+                raise ToolError("`open_tab` requires `url`.")
+            target = self._normalize_url(args.url)
+            if not self._domain_allowed(urlparse(target).netloc):
+                raise ToolError(
+                    f"Navigation to '{target}' is blocked by allowed_domains "
+                    f"({', '.join(self.config.allowed_domains)})."
+                )
+            await _manager().open_tab(target, self.config)
+        elif args.action == "switch_tab":
+            if args.tab_id is None:
+                raise ToolError("`switch_tab` requires `tab_id` (from `list_tabs`).")
+            await _manager().switch_tab(args.tab_id)
+        # list_tabs needs no page action; the tab list is attached by run().
 
     async def _perform(
         self, page: Any, args: VibeInChromeArgs, ctx: InvokeContext | None
