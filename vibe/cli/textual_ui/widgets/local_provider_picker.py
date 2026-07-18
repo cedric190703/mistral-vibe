@@ -77,6 +77,11 @@ class LocalProviderPickerApp(Container):
         return "\n".join(
             f"{'●' if item.models else '○'} {item.provider.name} ({item.provider.port}) — "
             f"{len(item.models)} model{'s' if len(item.models) != 1 else ''}"
+            + (
+                f" · set {item.provider.api_key_env_var}"
+                if not item.models and item.provider.api_key_env_var
+                else ""
+            )
             for item in self._discoveries
         )
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+import os
 from typing import Any
 
 from vibe.core.utils.http import VibeAsyncHTTPClient
@@ -13,10 +14,16 @@ _PROBE_TIMEOUT_SECONDS = 0.3
 class LocalProvider:
     name: str
     port: int
+    api_key_env_var: str = ""
 
     @property
     def api_base(self) -> str:
         return f"http://127.0.0.1:{self.port}/v1"
+
+    @property
+    def headers(self) -> dict[str, str]:
+        api_key = os.getenv(self.api_key_env_var, "") if self.api_key_env_var else ""
+        return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +44,7 @@ LOCAL_PROVIDERS = (
     LocalProvider("LM Studio", 1234),
     LocalProvider("vLLM", 8000),
     LocalProvider("SGLang", 30000),
-    LocalProvider("Jan", 1337),
+    LocalProvider("Jan", 1337, "JAN_API_KEY"),
 )
 
 
@@ -60,16 +67,19 @@ async def discover_local_providers() -> list[LocalProviderDiscovery]:
 async def _probe_provider(
     client: VibeAsyncHTTPClient, provider: LocalProvider
 ) -> LocalProviderDiscovery:
+    payload: Any = None
     try:
-        response = await client.get(f"{provider.api_base}/models")
+        response = await client.get(
+            f"{provider.api_base}/models", headers=provider.headers
+        )
         response.raise_for_status()
-        payload: Any = response.json()
+        payload = response.json()
     except Exception:
-        return LocalProviderDiscovery(provider, [])
+        pass
 
     models = _openai_models(provider, payload)
-    if not models and provider.name == "LM Studio":
-        models = await _lm_studio_models(client, provider)
+    if provider.name == "LM Studio":
+        models = await _lm_studio_models(client, provider) or models
     return LocalProviderDiscovery(provider, models)
 
 
@@ -89,7 +99,9 @@ async def _lm_studio_models(
     client: VibeAsyncHTTPClient, provider: LocalProvider
 ) -> list[LocalModel]:
     try:
-        response = await client.get(f"http://127.0.0.1:{provider.port}/api/v1/models")
+        response = await client.get(
+            f"http://127.0.0.1:{provider.port}/api/v1/models", headers=provider.headers
+        )
         response.raise_for_status()
         payload: Any = response.json()
     except Exception:

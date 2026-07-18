@@ -50,3 +50,20 @@ async def test_discover_local_models_uses_lm_studio_downloaded_models_fallback()
     assert [(model.provider.name, model.name) for model in models] == [
         ("LM Studio", "downloaded-qwen")
     ]
+
+
+@pytest.mark.asyncio
+async def test_discover_local_models_uses_lm_studio_native_api_when_openai_api_fails() -> (
+    None
+):
+    with respx.mock:
+        respx.get("http://127.0.0.1:1234/v1/models").mock(return_value=Response(404))
+        respx.get("http://127.0.0.1:1234/api/v1/models").mock(
+            return_value=Response(200, json={"models": [{"key": "downloaded-qwen"}]})
+        )
+
+        models = await discover_local_models()
+
+    assert [(model.provider.name, model.name) for model in models] == [
+        ("LM Studio", "downloaded-qwen")
+    ]

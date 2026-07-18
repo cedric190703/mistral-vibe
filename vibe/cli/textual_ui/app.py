@@ -1401,7 +1401,7 @@ class VibeApp(App):  # noqa: PLR0904
         provider = {
             "name": provider_name,
             "api_base": local_model.provider.api_base,
-            "api_key_env_var": "",
+            "api_key_env_var": local_model.provider.api_key_env_var,
             "api_style": "openai",
             "backend": "generic",
         }
