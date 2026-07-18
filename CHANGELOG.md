@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `vibe-in-chrome` tool: drive a real Chromium browser (via Playwright) to test and debug the web app you are building — open the dev server, walk a flow, and read console/network errors with the `console` action — or use sites that have no API or connector. Operates in text mode: `snapshot` returns an indexed list of interactable elements and `click`/`type` act on them by index, so it works with any model, and it executes JavaScript (reads client-rendered SPAs `web_fetch` cannot). A `pause` action hands control to the human for a login, captcha, or 2FA step and resumes once they confirm, and a `screenshot` action captures the page and shows it to vision-capable models (injected as an image on the next turn; saved to a file for the human). Session options: `persist_session = true` reuses a persistent Chrome profile so logins survive across runs, or `cdp_url` attaches to an already-running Chrome. Safety: mutating actions require approval by default and `allowed_domains` restricts navigation (enforced even under auto-approve); the browser is closed on session end. Install with `pip install mistral-vibe[browser]` then `playwright install chromium`; the tool hides itself when Playwright is absent. Closes #815.
+
 ## [2.21.0] - 2026-07-17
 
 ### Added

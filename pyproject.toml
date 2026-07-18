@@ -125,6 +125,14 @@ dependencies = [
     "zstandard==0.25.0",
 ]
 
+[project.optional-dependencies]
+# Browser automation tool (vibe/core/tools/builtins/vibe_in_chrome.py). Optional because
+# it pulls in Playwright and a Chromium download. After installing this extra, run
+# `playwright install chromium` once. The `vibe-in-chrome` tool hides itself when absent.
+browser = [
+    "playwright==1.49.1",
+]
+
 [project.urls]
 Homepage = "https://github.com/mistralai/mistral-vibe"
 Repository = "https://github.com/mistralai/mistral-vibe"
