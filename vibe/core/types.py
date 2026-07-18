@@ -581,6 +581,10 @@ type SwitchAgentCallback = Callable[[str], Awaitable[None]]
 
 type ClearContextCallback = Callable[[], Awaitable[None]]
 
+# A tool emits image attachments to be shown to the model on its next turn
+# (with a short caption). The host queues them as an injected user message.
+type EmitImageCallback = Callable[[list[ImageAttachment], str], None]
+
 
 class MessageList(Sequence[LLMMessage]):
     def __init__(

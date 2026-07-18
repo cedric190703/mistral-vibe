@@ -726,6 +726,10 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             task.cancel()
             with contextlib.suppress(BaseException):
                 await task
+        with contextlib.suppress(Exception):
+            from vibe.core.tools.builtins.vibe_in_chrome import close_browser
+
+            await close_browser()
         if self._mcp_pool is not None:
             with contextlib.suppress(Exception):
                 await self._mcp_pool.aclose()
@@ -1516,6 +1520,26 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         )
         self._pending_injected_messages.append(msg)
 
+    def _inject_tool_image(
+        self, images: list[ImageAttachment], caption: str
+    ) -> None:
+        """Queue images produced by a tool as an injected user message.
+
+        The loop drains this before the next model turn (see
+        ``_drain_pending_injections``), so a vision-capable model sees the image;
+        images are stripped automatically for models without vision support.
+        """
+        if not images:
+            return
+        self._pending_injected_messages.append(
+            LLMMessage(
+                role=Role.user,
+                content=caption or "Image captured by a tool.",
+                images=images,
+                injected=True,
+            )
+        )
+
     def _handle_session_plan_events(self, event: BaseEvent) -> BaseEvent | None:
         if isinstance(event, ToolCallEvent) and event.tool_name == "exit_plan_mode":
             self._plan_session.snapshot_content_hash()
@@ -1856,6 +1880,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 hook_config_result=self._hook_config_result,
                 session_id=self.session_id,
                 mcp_pool=self._mcp_pool,
+                emit_image_callback=self._inject_tool_image,
             ),
             **tool_call.args_dict,
         ):
