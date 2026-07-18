@@ -141,6 +141,7 @@ from vibe.cli.textual_ui.widgets.vibe_code_project import (
     suggested_default_branch,
 )
 from vibe.cli.textual_ui.widgets.voice_app import VoiceApp
+from vibe.cli.textual_ui.widgets.workflow import WorkflowMapScreen, WorkflowRail
 from vibe.cli.textual_ui.windowing import (
     HISTORY_RESUME_TAIL_MESSAGES,
     LOAD_MORE_BATCH_SIZE,
@@ -264,6 +265,7 @@ from vibe.core.vibe_code_project import (
     is_saved_project_stale_error,
     repo_url_label,
 )
+from vibe.core.workflow import Workflow, WorkflowProjector
 
 _VSCODE_FAMILY_TERMINALS = {Terminal.VSCODE, Terminal.VSCODE_INSIDERS, Terminal.CURSOR}
 
@@ -483,6 +485,9 @@ class VibeApp(App):  # noqa: PLR0904
             "ctrl+g", "open_plan_in_editor", "Edit Plan", show=False, priority=False
         ),
         Binding("ctrl+backslash", "toggle_debug_console", "Debug Console", show=False),
+        Binding(
+            "ctrl+w", "toggle_workflow_map", "Workflow Map", show=False, priority=True
+        ),
     ]
 
     def get_driver_class(self) -> type[Driver]:
@@ -529,7 +534,7 @@ class VibeApp(App):  # noqa: PLR0904
         self._pending_question: asyncio.Future | None = None
         self._user_interaction_lock = asyncio.Lock()
 
-        self.event_handler: EventHandler | None = None
+        self._init_event_views()
 
         self._chat_input_container: ChatInputContainer | None = None
         self._current_bottom_app: BottomApp = BottomApp.Input
@@ -596,6 +601,12 @@ class VibeApp(App):  # noqa: PLR0904
         self._is_resuming_session = opts.is_resuming_session
         self._startup_prompt_processed = False
         self._startup_command_availability_ready = asyncio.Event()
+
+    def _init_event_views(self) -> None:
+        self.event_handler: EventHandler | None = None
+        self._workflow_projector = WorkflowProjector()
+        self._workflow_rail: WorkflowRail | None = None
+        self._workflow_screen: WorkflowMapScreen | None = None
 
     @property
     def config(self) -> AnyVibeConfig:
@@ -737,6 +748,8 @@ class VibeApp(App):  # noqa: PLR0904
             yield self._banner
             yield VerticalGroup(id="messages")
 
+        yield WorkflowRail()
+
         with Horizontal(id="loading-area"):
             yield NarratorStatus(self._narrator_manager)
             yield Static(id="loading-area-content")
@@ -793,6 +806,8 @@ class VibeApp(App):  # noqa: PLR0904
             on_profile_changed=self._on_profile_changed,
             on_context_cleared=self._on_context_cleared,
         )
+        self._workflow_rail = self.query_one(WorkflowRail)
+        self._refresh_workflow(self._workflow_projector.workflow)
 
         self._chat_input_container = self.query_one(ChatInputContainer)
         context_progress = self.query_one(ContextProgress)
@@ -2227,6 +2242,7 @@ class VibeApp(App):  # noqa: PLR0904
         self, events: AsyncGenerator[BaseEvent]
     ) -> None:
         async for event in events:
+            self._refresh_workflow(self._workflow_projector.apply(event))
             self._narrator_manager.on_turn_event(event)
             if isinstance(event, WaitingForInputEvent):
                 await self._remove_loading_widget()
@@ -2247,7 +2263,7 @@ class VibeApp(App):  # noqa: PLR0904
         prebuilt_images: list[ImageAttachment] | None = None,
         prebuilt_payload: PathPromptPayload | None = None,
     ) -> None:
-        self._agent_running = True
+        self._start_workflow_turn(prompt)
 
         await self._remove_loading_widget()
 
@@ -2283,10 +2299,12 @@ class VibeApp(App):  # noqa: PLR0904
                 await self._handle_agent_loop_events(events)
         except asyncio.CancelledError:
             await self._handle_turn_error(cancelled=True)
+            self._refresh_workflow(self._workflow_projector.finish_turn(cancelled=True))
             self._narrator_manager.on_turn_cancel()
             raise
         except Exception as e:
             await self._handle_turn_error()
+            self._refresh_workflow(self._workflow_projector.finish_turn(failed=True))
 
             # _watch_init_completion already rendered the fatal startup error
             # and told the user to exit -- don't duplicate the message.
@@ -2305,6 +2323,7 @@ class VibeApp(App):  # noqa: PLR0904
                 ErrorMessage(message, collapsed=self._tools_collapsed)
             )
         finally:
+            self._refresh_workflow(self._workflow_projector.finish_turn())
             self._narrator_manager.on_turn_end()
             self._agent_running = False
             self._interrupt_requested = False
@@ -4081,6 +4100,29 @@ class VibeApp(App):  # noqa: PLR0904
         self._tools_collapsed = not self._tools_collapsed
         for section in self.query(CollapsibleSection):
             section.set_collapsed(self._tools_collapsed)
+
+    def action_toggle_workflow_map(self) -> None:
+        if self._workflow_screen is not None:
+            self._workflow_screen.dismiss()
+            return
+
+        screen = WorkflowMapScreen(self._workflow_projector.workflow)
+        self._workflow_screen = screen
+        self.push_screen(screen, self._workflow_map_closed)
+
+    def _workflow_map_closed(self, _: None) -> None:
+        self._workflow_screen = None
+        self._focus_current_bottom_app()
+
+    def _refresh_workflow(self, workflow: Workflow) -> None:
+        if self._workflow_rail is not None:
+            self._workflow_rail.set_workflow(workflow)
+        if self._workflow_screen is not None:
+            self._workflow_screen.refresh_workflow(workflow)
+
+    def _start_workflow_turn(self, prompt: str) -> None:
+        self._agent_running = True
+        self._refresh_workflow(self._workflow_projector.start_turn(prompt))
 
     def action_cycle_mode(self) -> None:
         if self._current_bottom_app != BottomApp.Input:

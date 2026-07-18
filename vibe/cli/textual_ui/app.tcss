@@ -39,6 +39,96 @@ TextArea > .text-area--cursor {
     align: left middle;
 }
 
+#workflow-rail {
+    width: 100%;
+    height: auto;
+    margin: 1 0 0 0;
+    padding: 0 1;
+    border-left: thick $primary;
+    color: $text-muted;
+
+    &:ansi {
+        text-style: dim;
+    }
+}
+
+#workflow-map {
+    align: center middle;
+    background: $background;
+    padding: 1 2;
+}
+
+#workflow-map-title {
+    width: 100%;
+    text-style: bold;
+    color: $primary;
+    margin-bottom: 1;
+}
+
+#workflow-map-body {
+    width: 100%;
+    height: 1fr;
+    border: solid $foreground-muted;
+}
+
+#workflow-nodes {
+    width: 3fr;
+    height: 100%;
+    padding: 1;
+}
+
+.workflow-node {
+    width: 100%;
+    height: 1;
+    padding: 0 1;
+}
+
+.workflow-node:hover,
+.workflow-node.selected {
+    background: $surface;
+    text-style: reverse;
+}
+
+.workflow-running {
+    color: $primary;
+    text-style: bold;
+}
+
+.workflow-completed {
+    color: $success;
+}
+
+.workflow-failed {
+    color: $error;
+}
+
+.workflow-cancelled,
+.workflow-pending {
+    color: $text-muted;
+
+    &:ansi {
+        text-style: dim;
+    }
+}
+
+#workflow-detail {
+    width: 2fr;
+    height: 100%;
+    border-left: solid $foreground-muted;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
+#workflow-map-help {
+    width: 100%;
+    color: $text-muted;
+    margin-top: 1;
+
+    &:ansi {
+        text-style: dim;
+    }
+}
+
 #loading-area-content {
     width: 1fr;
     height: auto;
