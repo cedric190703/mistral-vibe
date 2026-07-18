@@ -5,9 +5,12 @@ import pytest
 from tests.conftest import build_test_agent_loop, build_test_vibe_config
 from tests.mock.utils import mock_llm_chunk
 from tests.stubs.fake_backend import FakeBackend
-from vibe.core.config import ModelConfig, RoutingConfig
+from tests.stubs.fake_mcp_registry import FakeMCPRegistry
+from vibe.core.agent_loop import AgentLoop
+from vibe.core.config import ModelConfig, ProviderConfig, RoutingConfig
+from vibe.core.config.orchestrator_legacy import LegacyConfigOrchestrator
 from vibe.core.model_routing import AdaptiveModelRouter
-from vibe.core.types import ModelRoutingEvent
+from vibe.core.types import AssistantEvent, Backend, ModelRoutingEvent
 
 
 def _models() -> dict[str, ModelConfig]:
@@ -162,3 +165,52 @@ async def test_disabled_routing_uses_the_selected_model_without_routing_events()
     events = [event async for event in agent_loop.act("Hello there")]
 
     assert not any(isinstance(event, ModelRoutingEvent) for event in events)
+
+
+@pytest.mark.asyncio
+async def test_routed_model_uses_its_own_provider_backend(monkeypatch) -> None:
+    fast_backend = FakeBackend(mock_llm_chunk(content="Hello from fast"))
+    capable_backend = FakeBackend(mock_llm_chunk(content="Hello from capable"))
+    providers = [
+        ProviderConfig(
+            name="local", api_base="http://127.0.0.1:11434/v1", backend=Backend.GENERIC
+        ),
+        ProviderConfig(
+            name="remote", api_base="https://example.test/v1", backend=Backend.GENERIC
+        ),
+    ]
+    models = [
+        ModelConfig(name="small", provider="local", alias="fast"),
+        ModelConfig(name="large", provider="remote", alias="capable"),
+    ]
+    config = build_test_vibe_config(
+        providers=providers,
+        models=models,
+        active_model="capable",
+        routing=RoutingConfig(fast_model="fast", capable_model="capable"),
+    )
+
+    def create_backend_for_provider(*, provider, **kwargs):
+        return fast_backend if provider.name == "local" else capable_backend
+
+    monkeypatch.setattr(
+        "vibe.core.agent_loop._loop.create_backend", create_backend_for_provider
+    )
+    agent_loop = AgentLoop(
+        config_orchestrator=LegacyConfigOrchestrator(config),
+        mcp_registry=FakeMCPRegistry(),
+        enable_streaming=False,
+    )
+
+    events = [event async for event in agent_loop.act("Hello there")]
+
+    assert any(
+        isinstance(event, ModelRoutingEvent) and event.model_alias == "fast"
+        for event in events
+    )
+    assert any(
+        isinstance(event, AssistantEvent) and event.content == "Hello from fast"
+        for event in events
+    )
+    assert len(fast_backend.requests_messages) == 1
+    assert capable_backend.requests_messages == []

@@ -430,6 +430,14 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
 
         self._injected_backend = backend
         self.backend = self.backend_factory()
+        self._provider_backends: dict[str, tuple[ProviderConfig, BackendLike]] = {}
+        self._owned_backends = [self.backend]
+        if backend is None:
+            active_provider = config.get_active_provider()
+            self._provider_backends[active_provider.name] = (
+                active_provider,
+                self.backend,
+            )
         self._sampling_handler = self._create_sampling_handler(
             backend_getter=lambda: self.backend,
             config_getter=lambda: self.config,
@@ -746,8 +754,9 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         if self._mcp_pool is not None:
             with contextlib.suppress(Exception):
                 await self._mcp_pool.aclose()
-        with contextlib.suppress(Exception):
-            await self.backend.__aexit__(None, None, None)
+        for backend in self._owned_backends:
+            with contextlib.suppress(Exception):
+                await backend.__aexit__(None, None, None)
         with contextlib.suppress(Exception):
             await self.experiment_manager.aclose()
 
@@ -848,7 +857,12 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
 
     def _select_backend(self, config: AnyVibeConfig | None = None) -> BackendLike:
         config = config or self.config
-        provider = config.get_active_provider()
+        return self._create_backend_for_provider(config.get_active_provider(), config)
+
+    @staticmethod
+    def _create_backend_for_provider(
+        provider: ProviderConfig, config: AnyVibeConfig
+    ) -> BackendLike:
         return create_backend(
             provider=provider,
             timeout=config.api_timeout,
@@ -862,6 +876,20 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 is not None
             ),
         )
+
+    def _backend_for_model(self, model: ModelConfig) -> BackendLike:
+        if self._injected_backend is not None:
+            return self.backend
+
+        provider = self.config.get_provider_for_model(model)
+        cached = self._provider_backends.get(provider.name)
+        if cached is not None and cached[0] == provider:
+            return cached[1]
+
+        backend = self._create_backend_for_provider(provider, self.config)
+        self._provider_backends[provider.name] = (provider, backend)
+        self._owned_backends.append(backend)
+        return backend
 
     async def _save_messages(self, *, allow_empty: bool = False) -> None:
         await self.session_logger.save_interaction(
@@ -2121,7 +2149,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
 
         try:
             start_time = time.perf_counter()
-            result = await self.backend.complete(
+            result = await self._backend_for_model(model).complete(
                 model=model,
                 messages=self._messages_for_backend(messages, model),
                 temperature=model.temperature,
@@ -2221,7 +2249,8 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             start_time = time.perf_counter()
             usage = LLMUsage()
             chunk_agg: LLMChunk | None = None
-            async for chunk in self.backend.complete_streaming(
+            backend = self._backend_for_model(active_model)
+            async for chunk in backend.complete_streaming(
                 model=active_model,
                 messages=self._messages_for_backend(self.messages, active_model),
                 temperature=active_model.temperature,
@@ -2619,6 +2648,14 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         # config so later refreshes (refresh_config) propagate to them.
         prepared.config_source.point_to(lambda: self.config)
         self.backend = prepared.backend
+        if all(prepared.backend is not backend for backend in self._owned_backends):
+            self._owned_backends.append(prepared.backend)
+        if self._injected_backend is None:
+            active_provider = self.config.get_active_provider()
+            self._provider_backends[active_provider.name] = (
+                active_provider,
+                prepared.backend,
+            )
         self.tool_manager = prepared.tool_manager
         self.skill_manager = prepared.skill_manager
         self.messages.update_system_prompt(prepared.system_prompt)
