@@ -131,12 +131,29 @@ async def test_routing_picker_selects_default_model_for_the_session() -> None:
         await app._show_routing()
         await pilot.pause(0.2)
 
-        await pilot.press("down", "enter")
+        await pilot.press("down", "space", "enter")
         await pilot.pause(0.2)
 
         assert not app.agent_loop.adaptive_routing_enabled
         assert app._current_bottom_app == BottomApp.Input
         assert len(app.query(RoutingPickerApp)) == 0
+
+
+@pytest.mark.asyncio
+async def test_routing_picker_requires_space_before_applying() -> None:
+    app = build_test_vibe_app(config=_make_config_with_routing())
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        await app._show_routing()
+        await pilot.pause(0.2)
+
+        await pilot.press("down", "enter")
+        await pilot.pause(0.2)
+
+        picker = app.query_one(RoutingPickerApp)
+        assert picker._selected_enabled is None
+        assert app.agent_loop.adaptive_routing_enabled
+        assert app._current_bottom_app == BottomApp.RoutingPicker
 
 
 @pytest.mark.asyncio
