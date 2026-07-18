@@ -116,6 +116,23 @@ async def test_model_routing_event_mounts_a_visible_status() -> None:
 
 
 @pytest.mark.asyncio
+async def test_model_routing_event_updates_the_persistent_model_indicator() -> None:
+    model_routed = Mock()
+    handler = EventHandler(
+        mount_callback=AsyncMock(),
+        get_tools_collapsed=lambda: False,
+        on_model_routed=model_routed,
+    )
+    event = ModelRoutingEvent(
+        model_alias="capable", reason="tool call failed", escalated=True
+    )
+
+    await handler.handle_event(event)
+
+    model_routed.assert_called_once_with(event)
+
+
+@pytest.mark.asyncio
 async def test_streaming_arg_update_before_result_does_not_register_error() -> None:
     handler, _ = _make_handler()
 

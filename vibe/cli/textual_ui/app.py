@@ -243,6 +243,7 @@ from vibe.core.types import (
     ContextTooLongError,
     ImageAttachment,
     LLMMessage,
+    ModelRoutingEvent,
     RateLimitError,
     ReasoningEvent,
     RefusalError,
@@ -795,6 +796,7 @@ class VibeApp(App):  # noqa: PLR0904
             get_tools_collapsed=lambda: self._tools_collapsed,
             on_profile_changed=self._on_profile_changed,
             on_context_cleared=self._on_context_cleared,
+            on_model_routed=self._on_model_routed,
         )
 
         self._chat_input_container = self.query_one(ChatInputContainer)
@@ -4161,6 +4163,10 @@ class VibeApp(App):  # noqa: PLR0904
     def _on_profile_changed(self) -> None:
         self._refresh_profile_widgets()
         self._refresh_banner()
+
+    def _on_model_routed(self, event: ModelRoutingEvent) -> None:
+        if self._banner:
+            self._banner.set_routed_model(event.model_alias)
 
     def _refresh_banner(self) -> None:
         if self._banner:

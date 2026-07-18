@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from textual.app import ComposeResult
@@ -107,6 +107,13 @@ class Banner(Static):
             hooks_count,
             plan_description,
         )
+        if self.is_attached:
+            self.query_one("#banner-model", NoMarkupStatic).remove_class("routed")
+
+    def set_routed_model(self, model_alias: str) -> None:
+        self.state = replace(self.state, active_model=f"using {model_alias} [routed]")
+        if self.is_attached:
+            self.query_one("#banner-model", NoMarkupStatic).add_class("routed")
 
     @staticmethod
     def _build_state(

@@ -1396,6 +1396,11 @@ NarratorStatus {
 #banner-model {
     color: $secondary;
     width: auto;
+
+    &.routed {
+        color: $mistral_orange;
+        text-style: bold;
+    }
 }
 
 #banner-user-plan {
