@@ -57,6 +57,7 @@ async def test_local_picker_selection_persists_provider_model_and_active_model()
             "local-11434-qwen3",
         )
         assert app._current_bottom_app == BottomApp.Input
+        assert len(app.query(LocalProviderPickerApp)) == 0
 
 
 @pytest.mark.asyncio
@@ -75,3 +76,46 @@ async def test_local_picker_escape_returns_to_input() -> None:
         await pilot.pause()
 
         assert app._current_bottom_app == BottomApp.Input
+
+
+@pytest.mark.asyncio
+async def test_local_picker_space_selects_the_highlighted_model() -> None:
+    app = build_test_vibe_app()
+    local_model = LocalModel(LocalProvider("Ollama", 11434), "qwen3")
+
+    async with app.run_test() as pilot:
+        with patch.object(app, "_select_local_model", new=AsyncMock()) as select:
+            await app._switch_from_input(
+                LocalProviderPickerApp(
+                    [LocalProviderDiscovery(local_model.provider, [local_model])],
+                    current_model="alpha",
+                )
+            )
+            await pilot.press("space")
+            await pilot.pause()
+
+        select.assert_awaited_once_with(local_model)
+        assert app._current_bottom_app == BottomApp.Input
+
+
+@pytest.mark.asyncio
+async def test_local_can_be_opened_again_after_a_selection() -> None:
+    app = build_test_vibe_app()
+    local_model = LocalModel(LocalProvider("Ollama", 11434), "qwen3")
+    discoveries = [LocalProviderDiscovery(local_model.provider, [local_model])]
+
+    async with app.run_test() as pilot:
+        with (
+            patch(
+                "vibe.cli.textual_ui.app.discover_local_providers",
+                new=AsyncMock(return_value=discoveries),
+            ),
+            patch.object(app, "_select_local_model", new=AsyncMock()),
+        ):
+            await app._show_local()
+            await pilot.press("space")
+            await pilot.pause()
+            await app._show_local()
+            await pilot.pause()
+
+        assert len(app.query(LocalProviderPickerApp)) == 1

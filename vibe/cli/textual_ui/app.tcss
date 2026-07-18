@@ -1691,7 +1691,7 @@ NarratorStatus {
     margin: 0;
 }
 
-#local-provider-picker {
+#local_provider_picker-app {
     height: auto;
     width: 100%;
     background: transparent;

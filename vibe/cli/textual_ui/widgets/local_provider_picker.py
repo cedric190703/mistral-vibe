@@ -20,7 +20,8 @@ class LocalProviderPickerApp(Container):
     can_focus_children = True
 
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("escape", "cancel", "Cancel", show=False)
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("space", "select_highlighted", "Select", show=False),
     ]
 
     class ModelSelected(Message):
@@ -37,7 +38,7 @@ class LocalProviderPickerApp(Container):
         current_model: str,
         **kwargs: Any,
     ) -> None:
-        super().__init__(id="local-provider-picker", **kwargs)
+        super().__init__(id="local_provider_picker-app", **kwargs)
         self._discoveries = discoveries
         self._models = [model for item in discoveries for model in item.models]
         self._current_model = current_model
@@ -55,13 +56,17 @@ class LocalProviderPickerApp(Container):
             )
             yield NoMarkupStatic(
                 shortcut_hint(
-                    f"{shortcut('↑↓/jk')} Navigate  {shortcut('Enter')} Select  {shortcut('Esc')} Cancel"
+                    f"{shortcut('↑↓/jk')} Navigate  {shortcut('Space/Enter')} Select  {shortcut('Esc')} Cancel"
                 ),
                 classes="modelpicker-help",
             )
 
     def _option(self, model: LocalModel) -> Text:
-        marker = "✓" if model.name in self._current_model else "○"
+        marker = (
+            "✓"
+            if self._current_model == f"local-{model.provider.port}-{model.name}"
+            else "○"
+        )
         return Text(
             f"{marker} {model.provider.name} ({model.provider.port})  {model.name}",
             no_wrap=True,
@@ -81,6 +86,12 @@ class LocalProviderPickerApp(Container):
         if event.option.id is None:
             return
         self.post_message(self.ModelSelected(self._models[int(event.option.id)]))
+
+    def action_select_highlighted(self) -> None:
+        option_list = self.query_one(OptionList)
+        if option_list.highlighted is None:
+            return
+        self.post_message(self.ModelSelected(self._models[option_list.highlighted]))
 
     def action_cancel(self) -> None:
         self.post_message(self.Cancelled())

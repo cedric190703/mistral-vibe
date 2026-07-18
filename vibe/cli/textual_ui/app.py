@@ -1382,12 +1382,19 @@ class VibeApp(App):  # noqa: PLR0904
         self, message: LocalProviderPickerApp.ModelSelected
     ) -> None:
         await self._select_local_model(message.model)
-        await self._switch_to_input_app()
+        await self._close_local_provider_picker()
 
     async def on_local_provider_picker_app_cancelled(
         self, _event: LocalProviderPickerApp.Cancelled
     ) -> None:
+        await self._close_local_provider_picker()
+
+    async def _close_local_provider_picker(self) -> None:
         await self._switch_to_input_app()
+        try:
+            await self.query_one(LocalProviderPickerApp).remove()
+        except Exception:
+            pass
 
     async def _select_local_model(self, local_model: LocalModel) -> None:
         provider_name = f"local-{local_model.provider.port}"
