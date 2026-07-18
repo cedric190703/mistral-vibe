@@ -3,6 +3,7 @@ from __future__ import annotations
 from time import monotonic
 from typing import ClassVar
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
@@ -35,11 +36,27 @@ class WorkflowRail(NoMarkupStatic):
 
     def set_workflow(self, workflow: Workflow) -> None:
         self.display = workflow.active
-        route = " ── ".join(
-            f"{_SYMBOLS[phase.state]} {phase.title}" for phase in workflow.phases
+        active_phase = next(
+            (
+                phase
+                for phase in workflow.phases
+                if phase.state == WorkflowNodeState.RUNNING
+            ),
+            None,
         )
-        activity = workflow.live_activity or "Preparing response"
-        self.update(f"{route}\n{activity}")
+        completed = sum(
+            node.state == WorkflowNodeState.COMPLETED
+            for phase in workflow.phases
+            for node in phase.children
+        )
+        text = Text()
+        text.append("WORKFLOW  ", style="bold #FF8205")
+        text.append(
+            active_phase.title.upper() if active_phase else "PREPARING", style="bold"
+        )
+        text.append(f" · {completed} complete\n", style="dim")
+        text.append(workflow.live_activity or "Preparing response", style="italic")
+        self.update(text)
 
 
 class WorkflowNodeRow(NoMarkupStatic):
@@ -54,6 +71,7 @@ class WorkflowNodeRow(NoMarkupStatic):
         super().__init__(
             f"{prefix}{branch}{_SYMBOLS[node.state]} {node.title}",
             classes=f"workflow-node workflow-{node.state.value}"
+            + (" workflow-phase" if depth == 0 else "")
             + (" selected" if selected else ""),
         )
         self.node_id = node.id
@@ -74,10 +92,12 @@ class WorkflowMapScreen(Screen[None]):
     def __init__(self, workflow: Workflow) -> None:
         super().__init__(id="workflow-map")
         self.workflow = workflow
-        self.selected_id: str | None = None
+        self.selected_id = self._preferred_node_id()
 
     def compose(self) -> ComposeResult:
+        yield NoMarkupStatic("WORKFLOW MAP", id="workflow-map-eyebrow")
         yield NoMarkupStatic(self.workflow.title, id="workflow-map-title")
+        yield NoMarkupStatic(self._header_status(), id="workflow-map-status")
         with Horizontal(id="workflow-map-body"):
             with VerticalScroll(id="workflow-nodes"):
                 for node, depth in self._workflow_nodes():
@@ -86,7 +106,7 @@ class WorkflowMapScreen(Screen[None]):
                     )
             yield NoMarkupStatic(self._detail(), id="workflow-detail")
         yield NoMarkupStatic(
-            "↑↓ select · Enter next · Esc / Ctrl+W return to chat",
+            "↑↓ navigate · Enter next · Esc / Ctrl+W return to chat",
             id="workflow-map-help",
         )
 
@@ -94,8 +114,25 @@ class WorkflowMapScreen(Screen[None]):
         self.workflow = workflow
         ids = {node.id for node, _ in self._workflow_nodes()}
         if self.selected_id not in ids:
-            self.selected_id = next(iter(ids), None)
+            self.selected_id = self._preferred_node_id()
         self.call_later(self.recompose)
+
+    def _preferred_node_id(self) -> str | None:
+        nodes = self._workflow_nodes()
+        return next(
+            (
+                node.id
+                for node, depth in nodes
+                if depth and node.state == WorkflowNodeState.RUNNING
+            ),
+            next((node.id for node, _ in nodes), None),
+        )
+
+    def _header_status(self) -> str:
+        nodes = [node for node, depth in self._workflow_nodes() if depth]
+        running = sum(node.state == WorkflowNodeState.RUNNING for node in nodes)
+        completed = sum(node.state == WorkflowNodeState.COMPLETED for node in nodes)
+        return f"LIVE · {running} active · {completed} completed"
 
     def _workflow_nodes(self) -> list[tuple[WorkflowNode, int]]:
         nodes: list[tuple[WorkflowNode, int]] = []
@@ -114,9 +151,9 @@ class WorkflowMapScreen(Screen[None]):
         if node is None:
             return "Select a workflow step to inspect it."
         lines = [
-            node.title,
-            f"Status: {node.state.value}",
+            f"{_SYMBOLS[node.state]} {node.state.title()}",
             f"Elapsed: {_elapsed(node)}",
+            "",
             node.summary,
         ]
         if node.input_preview:

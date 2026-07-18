@@ -43,9 +43,11 @@ TextArea > .text-area--cursor {
     width: 100%;
     height: auto;
     margin: 1 0 0 0;
-    padding: 0 1;
-    border-left: thick $primary;
-    color: $text-muted;
+    padding: 0 2;
+    border-left: thick $mistral_orange;
+    border-top: solid $foreground-muted;
+    border-bottom: solid $foreground-muted;
+    color: $foreground;
 
     &:ansi {
         text-style: dim;
@@ -55,20 +57,36 @@ TextArea > .text-area--cursor {
 #workflow-map {
     align: center middle;
     background: $background;
-    padding: 1 2;
+    padding: 2 4;
+}
+
+#workflow-map-eyebrow {
+    width: 100%;
+    color: $mistral_orange;
+    text-style: bold;
 }
 
 #workflow-map-title {
     width: 100%;
     text-style: bold;
-    color: $primary;
+    color: $foreground;
+}
+
+#workflow-map-status {
+    width: 100%;
+    color: $text-muted;
     margin-bottom: 1;
+
+    &:ansi {
+        text-style: dim;
+    }
 }
 
 #workflow-map-body {
     width: 100%;
     height: 1fr;
-    border: solid $foreground-muted;
+    border: solid $mistral_orange;
+    background: $surface;
 }
 
 #workflow-nodes {
@@ -80,17 +98,24 @@ TextArea > .text-area--cursor {
 .workflow-node {
     width: 100%;
     height: 1;
-    padding: 0 1;
+    padding: 0 2;
 }
 
 .workflow-node:hover,
 .workflow-node.selected {
-    background: $surface;
-    text-style: reverse;
+    background: $mistral_orange;
+    color: $background;
+    text-style: bold;
+}
+
+.workflow-phase {
+    margin-top: 1;
+    border-bottom: solid $foreground-muted;
+    text-style: bold;
 }
 
 .workflow-running {
-    color: $primary;
+    color: $mistral_orange;
     text-style: bold;
 }
 
@@ -114,8 +139,9 @@ TextArea > .text-area--cursor {
 #workflow-detail {
     width: 2fr;
     height: 100%;
-    border-left: solid $foreground-muted;
+    border-left: thick $mistral_orange;
     padding: 1 2;
+    background: $background;
     overflow-y: auto;
 }
 
